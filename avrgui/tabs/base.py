@@ -9,7 +9,6 @@ from ..lib.qt_icon import set_icon
 
 
 class BaseTabWidget(QtWidgets.QWidget):
-
     pop_in: QtCore.SignalInstance = QtCore.Signal(object)  # type: ignore
     emit_message: QtCore.SignalInstance = QtCore.Signal(str, str)  # type: ignore
 

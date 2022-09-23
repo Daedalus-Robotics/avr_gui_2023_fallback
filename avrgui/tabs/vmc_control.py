@@ -79,7 +79,7 @@ class VMCControlWidget(BaseTabWidget):
         servos_layout.addLayout(servo_all_layout)
 
         for i in range(self.number_of_servos):
-            servo_groupbox = QtWidgets.QGroupBox(f"Servo {i+1}")
+            servo_groupbox = QtWidgets.QGroupBox(f"Servo {i + 1}")
             servo_layout = QtWidgets.QHBoxLayout()
             servo_groupbox.setLayout(servo_layout)
 
@@ -118,8 +118,8 @@ class VMCControlWidget(BaseTabWidget):
         Set a servo state
         """
         self.send_message(
-            "avr/pcm/set_servo_open_close",
-            AvrPcmSetServoOpenClosePayload(servo=number, action=action),
+                "avr/pcm/set_servo_open_close",
+                AvrPcmSetServoOpenClosePayload(servo = number, action = action),
         )
 
         if action == "open":
@@ -143,5 +143,5 @@ class VMCControlWidget(BaseTabWidget):
         Set LED color
         """
         self.send_message(
-            "avr/pcm/set_base_color", AvrPcmSetBaseColorPayload(wrgb=color)
+                "avr/pcm/set_base_color", AvrPcmSetBaseColorPayload(wrgb = color)
         )

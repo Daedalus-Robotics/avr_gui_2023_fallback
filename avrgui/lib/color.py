@@ -4,11 +4,11 @@ from .calc import normalize_value
 
 
 def smear_color(
-    min_color: Tuple[int, int, int],
-    max_color: Tuple[int, int, int],
-    value: float,
-    min_value: float,
-    max_value: float,
+        min_color: Tuple[int, int, int],
+        max_color: Tuple[int, int, int],
+        value: float,
+        min_value: float,
+        max_value: float
 ) -> Tuple[int, int, int]:
     """
     Smear a color between two colors based on a value.

@@ -42,7 +42,7 @@ class AutonomyWidget(BaseTabWidget):
 
         self.autonomous_label = QtWidgets.QLabel()
         self.autonomous_label.setAlignment(
-            QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter
+                QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter
         )
         autonomous_layout.addWidget(self.autonomous_label)
 
@@ -97,8 +97,8 @@ class AutonomyWidget(BaseTabWidget):
         Set a building state
         """
         self.send_message(
-            "avr/autonomous/building/drop",
-            AvrAutonomousBuildingDropPayload(id=number, enabled=state),
+                "avr/autonomous/building/drop",
+                AvrAutonomousBuildingDropPayload(id = number, enabled = state),
         )
 
         if state:
@@ -122,7 +122,7 @@ class AutonomyWidget(BaseTabWidget):
         Set autonomous mode
         """
         self.send_message(
-            "avr/autonomous/enable", AvrAutonomousEnablePayload(enabled=state)
+                "avr/autonomous/enable", AvrAutonomousEnablePayload(enabled = state)
         )
 
         if state:

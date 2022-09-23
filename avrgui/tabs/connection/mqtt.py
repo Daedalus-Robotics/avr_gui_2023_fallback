@@ -32,9 +32,7 @@ class MQTTClient(QtCore.QObject):
         self.client.on_message = self.on_message
         self.client.on_disconnect = self.on_disconnect
 
-    def on_connect(
-        self, client: mqtt.Client, userdata: Any, flags: dict, rc: int
-    ) -> None:
+    def on_connect(self, client: mqtt.Client, userdata: Any, flags: dict, rc: int) -> None:
         """
         Callback when the MQTT client connects
         """
@@ -42,20 +40,13 @@ class MQTTClient(QtCore.QObject):
         logger.debug("Subscribing to all topics")
         client.subscribe("#")
 
-    def on_message(
-        self, client: mqtt.Client, userdata: Any, msg: mqtt.MQTTMessage
-    ) -> None:
+    def on_message(self, client: mqtt.Client, userdata: Any, msg: mqtt.MQTTMessage) -> None:
         """
         Callback for every MQTT message
         """
         self.message.emit(msg.topic, msg.payload.decode("utf-8"))
 
-    def on_disconnect(
-        self,
-        client: mqtt.Client,
-        userdata: Any,
-        rc: int,
-    ) -> None:
+    def on_disconnect(self, client: mqtt.Client, userdata: Any, rc: int) -> None:
         """
         Callback when the MQTT client disconnects
         """
@@ -121,6 +112,11 @@ class MQTTConnectionWidget(QtWidgets.QWidget):
     def __init__(self, parent: QtWidgets.QWidget) -> None:
         super().__init__(parent)
 
+        self.disconnect_button = None
+        self.connect_button = None
+        self.state_label = None
+        self.port_line_edit = None
+        self.hostname_line_edit = None
         self.mqtt_client = MQTTClient()
         self.mqtt_client.connection_state.connect(self.set_connected_state)
 

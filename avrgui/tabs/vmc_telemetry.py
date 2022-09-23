@@ -38,7 +38,7 @@ class VMCTelemetryWidget(BaseTabWidget):
         # top groupbox
         top_groupbox = QtWidgets.QGroupBox("FCC Status")
         top_groupbox.setSizePolicy(
-            QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed
+                QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed
         )
         top_layout = QtWidgets.QFormLayout()
         top_groupbox.setLayout(top_layout)
@@ -73,7 +73,7 @@ class VMCTelemetryWidget(BaseTabWidget):
         # bottom groupbox
         bottom_group = QtWidgets.QFrame()
         bottom_group.setSizePolicy(
-            QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed
+                QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed
         )
         bottom_layout = QtWidgets.QHBoxLayout()
         bottom_group.setLayout(bottom_layout)
@@ -96,23 +96,23 @@ class VMCTelemetryWidget(BaseTabWidget):
         loc_xyz_layout.addWidget(self.loc_z_line_edit)
 
         bottom_left_layout.addRow(
-            QtWidgets.QLabel("Local NED (x, y, z):"), loc_xyz_layout
+                QtWidgets.QLabel("Local NED (x, y, z):"), loc_xyz_layout
         )
 
         # lat, lon, alt row
         loc_lla_layout = QtWidgets.QHBoxLayout()
 
-        self.loc_lat_line_edit = DisplayLineEdit("", round_digits=8)
+        self.loc_lat_line_edit = DisplayLineEdit("", round_digits = 8)
         loc_lla_layout.addWidget(self.loc_lat_line_edit)
 
-        self.loc_lon_line_edit = DisplayLineEdit("", round_digits=8)
+        self.loc_lon_line_edit = DisplayLineEdit("", round_digits = 8)
         loc_lla_layout.addWidget(self.loc_lon_line_edit)
 
         self.loc_alt_line_edit = DisplayLineEdit("")
         loc_lla_layout.addWidget(self.loc_alt_line_edit)
 
         bottom_left_layout.addRow(
-            QtWidgets.QLabel("Global (lat, lon, alt):"), loc_lla_layout
+                QtWidgets.QLabel("Global (lat, lon, alt):"), loc_lla_layout
         )
 
         bottom_layout.addWidget(bottom_left_groupbox)
@@ -163,7 +163,7 @@ class VMCTelemetryWidget(BaseTabWidget):
         # Status
         module_status_groupbox = QtWidgets.QGroupBox("Module Status")
         module_status_groupbox.setSizePolicy(
-            QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed
+                QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed
         )
         module_status_layout = QtWidgets.QHBoxLayout()
         module_status_groupbox.setLayout(module_status_layout)
@@ -221,7 +221,7 @@ class VMCTelemetryWidget(BaseTabWidget):
         Update satellites information
         """
         self.satellites_label.setText(
-            f"{payload['num_satellites']} visible, {payload['fix_type']}"
+                f"{payload['num_satellites']} visible, {payload['fix_type']}"
         )
 
     def update_battery(self, payload: AvrFcmBatteryPayload) -> None:
@@ -239,7 +239,7 @@ class VMCTelemetryWidget(BaseTabWidget):
 
         # this is required to change the progress bar color as the value changes
         color = smear_color(
-            (135, 0, 16), (11, 135, 0), value=soc, min_value=0, max_value=100
+                (135, 0, 16), (11, 135, 0), value = soc, min_value = 0, max_value = 100
         )
 
         stylesheet = f"""

@@ -53,7 +53,7 @@ class _Config:
 
     @property
     def mqtt_port(self) -> int:
-        return self.__get("mqtt_port", 18830)
+        return self.__get("mqtt_port", 1883)
 
     @mqtt_port.setter
     def mqtt_port(self, value: int) -> None:

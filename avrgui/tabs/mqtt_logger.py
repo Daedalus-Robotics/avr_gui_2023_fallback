@@ -63,7 +63,7 @@ class MQTTLoggerWidget(BaseTabWidget):
         self.setWindowTitle("MQTT Logger")
 
         # Access the Filesystem
-        os.makedirs(config.log_file_directory, exist_ok=True)
+        os.makedirs(config.log_file_directory, exist_ok = True)
 
         # stop/start state
         self.recording = False
@@ -111,12 +111,12 @@ class MQTTLoggerWidget(BaseTabWidget):
         if self.recording:
             # generate new file name
             filename = os.path.join(
-                config.log_file_directory,
-                f"MQTTLog_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv",
+                    config.log_file_directory,
+                    f"MQTTLog_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv",
             )
 
             # open file
-            self.file_handle = open(filename, "w", newline="")
+            self.file_handle = open(filename, "w", newline = "")
 
             # create CSV writer
             self.csv_writer = csv.writer(self.file_handle)
@@ -144,5 +144,5 @@ class MQTTLoggerWidget(BaseTabWidget):
         # Write time_stamp, topic, payload to log file
         if self.csv_writer is not None:
             self.csv_writer.writerow(
-                [datetime.datetime.now().isoformat(), topic, payload]
+                    [datetime.datetime.now().isoformat(), topic, payload]
             )

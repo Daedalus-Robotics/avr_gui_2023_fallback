@@ -23,7 +23,7 @@ from .base import BaseTabWidget
 
 
 def map_value(
-    x: float, in_min: float, in_max: float, out_min: float, out_max: float
+        x: float, in_min: float, in_max: float, out_min: float, out_max: float
 ) -> float:
     return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min
 
@@ -74,15 +74,15 @@ class ThermalView(QtWidgets.QWidget):
         ]
         # i'm not fully sure what this does
         self.grid_x, self.grid_y = np.mgrid[
-            0 : self.camera_x - 1 : self.camera_total / 2j,
-            0 : self.camera_y - 1 : self.camera_total / 2j,
-        ]
+                                   0: self.camera_x - 1: self.camera_total / 2j,
+                                   0: self.camera_y - 1: self.camera_total / 2j,
+                                   ]
 
         # create avaiable colors
         self.colors = [
             (int(c.red * 255), int(c.green * 255), int(c.blue * 255))
             for c in list(
-                colour.Color("indigo").range_to(colour.Color("red"), self.COLORDEPTH)
+                    colour.Color("indigo").range_to(colour.Color("red"), self.COLORDEPTH)
             )
         ]
 
@@ -114,7 +114,7 @@ class ThermalView(QtWidgets.QWidget):
         ]
 
         bicubic = scipy.interpolate.griddata(
-            self.points, float_pixels, (self.grid_x, self.grid_y), method="cubic"
+                self.points, float_pixels, (self.grid_x, self.grid_y), method = "cubic"
         )
 
         pen = QtGui.QPen(QtCore.Qt.NoPen)
@@ -123,17 +123,17 @@ class ThermalView(QtWidgets.QWidget):
         for ix, row in enumerate(bicubic):
             for jx, pixel in enumerate(row):
                 brush = QtGui.QBrush(
-                    QtGui.QColor(
-                        *self.colors[int(constrain(pixel, 0, self.COLORDEPTH - 1))]
-                    )
+                        QtGui.QColor(
+                                *self.colors[int(constrain(pixel, 0, self.COLORDEPTH - 1))]
+                        )
                 )
                 self.canvas.addRect(
-                    self.pixel_width * jx,
-                    self.pixel_height * ix,
-                    self.pixel_width,
-                    self.pixel_height,
-                    pen,
-                    brush,
+                        self.pixel_width * jx,
+                        self.pixel_height * ix,
+                        self.pixel_width,
+                        self.pixel_height,
+                        pen,
+                        brush,
                 )
 
 
@@ -170,22 +170,22 @@ class JoystickWidget(BaseTabWidget):
 
     def move_gimbal(self, x_servo_percent: int, y_servo_percent: int) -> None:
         self.send_message(
-            "avr/pcm/set_servo_pct",
-            AvrPcmSetServoPctPayload(servo=2, percent=x_servo_percent),
+                "avr/pcm/set_servo_pct",
+                AvrPcmSetServoPctPayload(servo = 2, percent = x_servo_percent),
         )
         self.send_message(
-            "avr/pcm/set_servo_pct",
-            AvrPcmSetServoPctPayload(servo=3, percent=y_servo_percent),
+                "avr/pcm/set_servo_pct",
+                AvrPcmSetServoPctPayload(servo = 3, percent = y_servo_percent),
         )
 
     def move_gimbal_absolute(self, x_servo_abs: int, y_servo_abs: int) -> None:
         self.send_message(
-            "avr/pcm/set_servo_abs",
-            AvrPcmSetServoAbsPayload(servo=2, absolute=x_servo_abs),
+                "avr/pcm/set_servo_abs",
+                AvrPcmSetServoAbsPayload(servo = 2, absolute = x_servo_abs),
         )
         self.send_message(
-            "avr/pcm/set_servo_abs",
-            AvrPcmSetServoAbsPayload(servo=3, absolute=y_servo_abs),
+                "avr/pcm/set_servo_abs",
+                AvrPcmSetServoAbsPayload(servo = 3, absolute = y_servo_abs),
         )
 
     def update_servos(self) -> None:
@@ -218,12 +218,12 @@ class JoystickWidget(BaseTabWidget):
         # side to side  270 left, 360 right
 
         x_servo_abs = round(
-            map_value(
-                self.current_x + 25, 25, 225, self.SERVO_ABS_MIN, self.SERVO_ABS_MAX
-            )
+                map_value(
+                        self.current_x + 25, 25, 225, self.SERVO_ABS_MIN, self.SERVO_ABS_MAX
+                )
         )
         y_servo_abs = round(
-            map_value(y_reversed, 25, 225, self.SERVO_ABS_MIN, self.SERVO_ABS_MAX)
+                map_value(y_reversed, 25, 225, self.SERVO_ABS_MIN, self.SERVO_ABS_MAX)
         )
 
         self.move_gimbal_absolute(x_servo_abs, y_servo_abs)
@@ -277,10 +277,10 @@ class JoystickWidget(BaseTabWidget):
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:
         painter = QtGui.QPainter(self)
         bounds = QtCore.QRectF(
-            -self.__maxDistance,
-            -self.__maxDistance,
-            self.__maxDistance * 2,
-            self.__maxDistance * 2,
+                -self.__maxDistance,
+                -self.__maxDistance,
+                self.__maxDistance * 2,
+                self.__maxDistance * 2,
         ).translated(self._center())
 
         # painter.drawEllipse(bounds)
@@ -350,21 +350,21 @@ class ThermalViewControlWidget(BaseTabWidget):
         temp_range_layout.addWidget(set_temp_range_button)
 
         set_temp_range_calibrate_button = QtWidgets.QPushButton(
-            "Auto Calibrate Temp Range"
+                "Auto Calibrate Temp Range"
         )
         temp_range_layout.addWidget(set_temp_range_calibrate_button)
 
         viewer_layout.addLayout(temp_range_layout)
 
         set_temp_range_button.clicked.connect(  # type: ignore
-            lambda: self.viewer.set_temp_range(
-                float(self.temp_min_line_edit.text()),
-                float(self.temp_max_line_edit.text()),
-            )
+                lambda: self.viewer.set_temp_range(
+                        float(self.temp_min_line_edit.text()),
+                        float(self.temp_max_line_edit.text()),
+                )
         )
 
         set_temp_range_calibrate_button.clicked.connect(  # type: ignore
-            lambda: self.calibrate_temp()
+                lambda: self.calibrate_temp()
         )
 
         layout.addWidget(viewer_groupbox)
@@ -395,17 +395,17 @@ class ThermalViewControlWidget(BaseTabWidget):
         self.joystick.emit_message.connect(self.emit_message.emit)
 
         fire_laser_button.clicked.connect(  # type: ignore
-            lambda: self.send_message("avr/pcm/fire_laser", AvrPcmFireLaserPayload())
+                lambda: self.send_message("avr/pcm/fire_laser", AvrPcmFireLaserPayload())
         )
 
         laser_on_button.clicked.connect(  # type: ignore
-            lambda: self.send_message("avr/pcm/set_laser_on", AvrPcmSetLaserOnPayload())
+                lambda: self.send_message("avr/pcm/set_laser_on", AvrPcmSetLaserOnPayload())
         )
 
         laser_off_button.clicked.connect(  # type: ignore
-            lambda: self.send_message(
-                "avr/pcm/set_laser_off", AvrPcmSetLaserOffPayload()
-            )
+                lambda: self.send_message(
+                        "avr/pcm/set_laser_off", AvrPcmSetLaserOffPayload()
+                )
         )
 
         # don't allow us to shrink below size hint

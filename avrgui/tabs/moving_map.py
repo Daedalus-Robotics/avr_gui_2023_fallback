@@ -71,7 +71,7 @@ class AttitudeIndicator(QtWidgets.QGraphicsView):
 
         self._original_pizel_per_deg = 1.7
         self._original_center = QtCore.QPointF(
-            self._original_width / 2, self._original_height / 2
+                self._original_width / 2, self._original_height / 2
         )
 
         self._back_z = -30
@@ -96,41 +96,41 @@ class AttitudeIndicator(QtWidgets.QGraphicsView):
         # under MIT license
 
         self._item_back = QtSvgWidgets.QGraphicsSvgItem(
-            os.path.join(IMG_DIR, "attitude_indicator_back.svg")
+                os.path.join(IMG_DIR, "attitude_indicator_back.svg")
         )
         self._item_back.setZValue(self._back_z)
         self._item_back.setTransform(
-            QtGui.QTransform.fromScale(self._scale_x, self._scale_y), True
+                QtGui.QTransform.fromScale(self._scale_x, self._scale_y), True
         )
         self._item_back.setTransformOriginPoint(self._original_center)
         self._scene.addItem(self._item_back)
 
         self._item_face = QtSvgWidgets.QGraphicsSvgItem(
-            os.path.join(IMG_DIR, "attitude_indicator_face.svg")
+                os.path.join(IMG_DIR, "attitude_indicator_face.svg")
         )
         self._item_face.setZValue(self._face_z)
         self._item_face.setTransform(
-            QtGui.QTransform.fromScale(self._scale_x, self._scale_y), True
+                QtGui.QTransform.fromScale(self._scale_x, self._scale_y), True
         )
         self._item_face.setTransformOriginPoint(self._original_center)
         self._scene.addItem(self._item_face)
 
         self._item_ring = QtSvgWidgets.QGraphicsSvgItem(
-            os.path.join(IMG_DIR, "attitude_indicator_ring.svg")
+                os.path.join(IMG_DIR, "attitude_indicator_ring.svg")
         )
         self._item_ring.setZValue(self._ring_z)
         self._item_ring.setTransform(
-            QtGui.QTransform.fromScale(self._scale_x, self._scale_y), True
+                QtGui.QTransform.fromScale(self._scale_x, self._scale_y), True
         )
         self._item_ring.setTransformOriginPoint(self._original_center)
         self._scene.addItem(self._item_ring)
 
         self._item_case = QtSvgWidgets.QGraphicsSvgItem(
-            os.path.join(IMG_DIR, "attitude_indicator_case.svg")
+                os.path.join(IMG_DIR, "attitude_indicator_case.svg")
         )
         self._item_case.setZValue(self._case_z)
         self._item_case.setTransform(
-            QtGui.QTransform.fromScale(self._scale_x, self._scale_y), True
+                QtGui.QTransform.fromScale(self._scale_x, self._scale_y), True
         )
         self._item_case.setTransformOriginPoint(self._original_center)
         self._scene.addItem(self._item_case)
@@ -185,15 +185,14 @@ class AttitudeIndicator(QtWidgets.QGraphicsView):
         self._face_delta_y_new = self._scale_y * delta * math.cos(roll_rad)
 
         self._item_face.moveBy(
-            self._face_delta_x_new - self._face_delta_x_old,
-            self._face_delta_y_new - self._face_delta_y_old,
+                self._face_delta_x_new - self._face_delta_x_old,
+                self._face_delta_y_new - self._face_delta_y_old,
         )
 
         self._scene.update()
 
 
 class DroneAltitudeWidget(QtWidgets.QWidget):
-
     GROUND_WIDTH = 3
 
     DRONE_ICON_WIDTH = 80
@@ -212,7 +211,7 @@ class DroneAltitudeWidget(QtWidgets.QWidget):
         self.canvas = QtWidgets.QGraphicsScene(self)
         self.view = QtWidgets.QGraphicsView(self.canvas)
         self.view.setSceneRect(
-            0, 0, self.CANVAS_WIDTH, self.CANVAS_HEIGHT + self.GROUND_WIDTH
+                0, 0, self.CANVAS_WIDTH, self.CANVAS_HEIGHT + self.GROUND_WIDTH
         )
         self.view.setStyleSheet("border: 0px")
 
@@ -220,9 +219,9 @@ class DroneAltitudeWidget(QtWidgets.QWidget):
 
         # add drone icon
         self.drone_icon = ResizedQGraphicsSvgItem(
-            os.path.join(IMG_DIR, "drone_side_icon.svg"),
-            self.DRONE_ICON_WIDTH,
-            self.DRONE_ICON_HEIGHT,
+                os.path.join(IMG_DIR, "drone_side_icon.svg"),
+                self.DRONE_ICON_WIDTH,
+                self.DRONE_ICON_HEIGHT,
         )
         self.canvas.addItem(self.drone_icon)
 
@@ -230,7 +229,7 @@ class DroneAltitudeWidget(QtWidgets.QWidget):
         ground_pen = QtGui.QPen(QtGui.QColor(120, 90, 8, 255))
         ground_pen.setWidth(self.GROUND_WIDTH)
         self.canvas.addLine(
-            0, self.CANVAS_HEIGHT, self.CANVAS_WIDTH, self.CANVAS_HEIGHT, ground_pen
+                0, self.CANVAS_HEIGHT, self.CANVAS_WIDTH, self.CANVAS_HEIGHT, ground_pen
         )
 
         sub_layout = QtWidgets.QVBoxLayout()
@@ -267,16 +266,16 @@ class DroneAltitudeWidget(QtWidgets.QWidget):
         # how tall the drone icon is visually. Qt still positions based on the bounding
         # rectangle, even if it's being scaled
         drone_visual_height = (
-            self.drone_icon.boundingRect().height() * self.drone_icon.base_scale
+                self.drone_icon.boundingRect().height() * self.drone_icon.base_scale
         )
 
         y = (
-            usable_canvas_height
-            - (norm_altitude * usable_canvas_height)  # distance off the ground
-            - drone_visual_height  # visible height of the icon
-            - (
-                (self.drone_icon.boundingRect().height() - drone_visual_height) / 2
-            )  # difference between actual height and visual height
+                usable_canvas_height
+                - (norm_altitude * usable_canvas_height)  # distance off the ground
+                - drone_visual_height  # visible height of the icon
+                - (
+                        (self.drone_icon.boundingRect().height() - drone_visual_height) / 2
+                )  # difference between actual height and visual height
         )
 
         self.drone_icon.setPos(x, y)
@@ -327,7 +326,7 @@ class InfiniteGridGraphicsScene(QtWidgets.QGraphicsScene):
     LINE_METER_SPACING = 1
 
     def drawBackground(
-        self, painter: QtGui.QPainter, rect: Union[QtCore.QRectF, QtCore.QRect]
+            self, painter: QtGui.QPainter, rect: Union[QtCore.QRectF, QtCore.QRect]
     ) -> None:
         """
         Draws a grid within the given viewport.
@@ -344,14 +343,14 @@ class InfiniteGridGraphicsScene(QtWidgets.QGraphicsScene):
 
         # vertical lines
         for x in range(
-            math.floor(rect.topLeft().x()), math.ceil(rect.bottomRight().x())
+                math.floor(rect.topLeft().x()), math.ceil(rect.bottomRight().x())
         ):
             if x % (self.LINE_METER_SPACING * self.PIXELS_PER_METER) == 0:
                 painter.drawLine(x, math.ceil(rect.top()), x, math.floor(rect.bottom()))
 
         # horizontal lines
         for y in range(
-            math.floor(rect.topLeft().y()), math.ceil(rect.bottomRight().y())
+                math.floor(rect.topLeft().y()), math.ceil(rect.bottomRight().y())
         ):
             if y % (self.LINE_METER_SPACING * self.PIXELS_PER_METER) == 0:
                 painter.drawLine(math.ceil(rect.left()), y, math.floor(rect.right()), y)
@@ -376,23 +375,23 @@ class MovingMapGraphicsWidget(QtWidgets.QWidget):
 
         # add home icon
         self.home_icon = ResizedQGraphicsSvgItem(
-            os.path.join(IMG_DIR, "home_icon.svg"), 50, 50
+                os.path.join(IMG_DIR, "home_icon.svg"), 50, 50
         )
         self.canvas.addItem(self.home_icon)
         self.home_icon.setPos(
-            -self.home_icon.boundingRect().width() / 2,
-            -self.home_icon.boundingRect().height() / 2,
+                -self.home_icon.boundingRect().width() / 2,
+                -self.home_icon.boundingRect().height() / 2,
         )
         self.home_icon.setZValue(-10)
 
         # add drone icon
         self.drone_icon = ResizedQGraphicsSvgItem(
-            os.path.join(IMG_DIR, "drone_top_icon.svg"), 80, 80
+                os.path.join(IMG_DIR, "drone_top_icon.svg"), 80, 80
         )
         self.canvas.addItem(self.drone_icon)
         self.drone_icon.setPos(
-            -self.drone_icon.boundingRect().width() / 2,
-            -self.drone_icon.boundingRect().height() / 2,
+                -self.drone_icon.boundingRect().width() / 2,
+                -self.drone_icon.boundingRect().height() / 2,
         )
         self.drone_icon.setZValue(999)
 
@@ -432,10 +431,10 @@ class MovingMapGraphicsWidget(QtWidgets.QWidget):
 
         # current center of the drone icon
         current_drone_center_x = current_drone_corner_x + (
-            self.drone_icon.boundingRect().width() / 2
+                self.drone_icon.boundingRect().width() / 2
         )
         current_drone_center_y = current_drone_corner_y + (
-            self.drone_icon.boundingRect().height() / 2
+                self.drone_icon.boundingRect().height() / 2
         )
 
         # new center of the drone icon
@@ -444,34 +443,34 @@ class MovingMapGraphicsWidget(QtWidgets.QWidget):
 
         # new top-left corner of the drone icon
         new_drone_corner_x = new_drone_center_x - (
-            self.drone_icon.boundingRect().width() / 2
+                self.drone_icon.boundingRect().width() / 2
         )
         new_drone_corner_y = new_drone_center_y - (
-            self.drone_icon.boundingRect().height() / 2
+                self.drone_icon.boundingRect().height() / 2
         )
 
         # go from blue to red as the altitude increases
         # initially was brown to light blue, but was pointed out that
         # it was hard to distinguish for color blind individuals
         color = smear_color(
-            (14, 11, 191),
-            (191, 11, 14),
-            value=-z,
-            min_value=0,
-            max_value=20,
+                (14, 11, 191),
+                (191, 11, 14),
+                value = -z,
+                min_value = 0,
+                max_value = 20,
         )
 
         # draw track
         track_pen = QtGui.QPen(QtGui.QColor(color[0], color[1], color[2], 200))
         track_pen.setWidth(3)
         self._tracks.append(
-            self.canvas.addLine(
-                current_drone_center_x,
-                current_drone_center_y,
-                new_drone_center_x,
-                new_drone_center_y,
-                track_pen,
-            )
+                self.canvas.addLine(
+                        current_drone_center_x,
+                        current_drone_center_y,
+                        new_drone_center_x,
+                        new_drone_center_y,
+                        track_pen,
+                )
         )
 
         # set limit on the number of tracks that are drawn
@@ -498,8 +497,8 @@ class MovingMapGraphicsWidget(QtWidgets.QWidget):
         Reset the drone icon's position and clear the tracks.
         """
         self.drone_icon.setPos(
-            -self.drone_icon.boundingRect().width() / 2,
-            -self.drone_icon.boundingRect().height() / 2,
+                -self.drone_icon.boundingRect().width() / 2,
+                -self.drone_icon.boundingRect().height() / 2,
         )
         self.drone_icon.setRotation(0)
 
@@ -574,7 +573,7 @@ class MovingMapWidget(BaseTabWidget):
         Update euler attitude information.
         """
         self.moving_map_widget.update_drone_location(
-            payload["dX"], payload["dY"], payload["dZ"]
+                payload["dX"], payload["dY"], payload["dZ"]
         )
         self.altitude_indicator.set_altitude(payload["dZ"])
 

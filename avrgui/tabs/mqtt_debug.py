@@ -10,7 +10,7 @@ from .base import BaseTabWidget
 
 
 def _get_or_create_child(
-    parent: QtWidgets.QTreeWidgetItem, name: str
+        parent: QtWidgets.QTreeWidgetItem, name: str
 ) -> QtWidgets.QTreeWidgetItem:
     """
     Gets the child QTreeWidgetItem of a QTreeWidgetItem matching the given name.
@@ -206,9 +206,9 @@ class MQTTDebugWidget(BaseTabWidget):
         self.tree_widget.preload_data.connect(self.preload_data)
 
         self.send_button.clicked.connect(  # type: ignore
-            lambda: self.send_message(
-                self.topic_line_edit.text(), self.payload_text_edit.toPlainText()
-            )
+                lambda: self.send_message(
+                        self.topic_line_edit.text(), self.payload_text_edit.toPlainText()
+                )
         )
 
     def clear(self) -> None:
@@ -311,13 +311,13 @@ class MQTTDebugWidget(BaseTabWidget):
         with contextlib.suppress(json.JSONDecodeError):
             # try to format valid JSON
             payload_json = json.loads(payload)
-            payload = json.dumps(payload_json, indent=4)
+            payload = json.dumps(payload_json, indent = 4)
 
         # set the data
         self.data_view.setText(payload)
 
     def set_item_background(
-        self, item: QtWidgets.QTreeWidgetItem, color: Tuple[int, int, int]
+            self, item: QtWidgets.QTreeWidgetItem, color: Tuple[int, int, int]
     ) -> None:
         """
         Set the background color for an item.
@@ -353,8 +353,8 @@ class MQTTDebugWidget(BaseTabWidget):
         """
         topic = _rebuild_topic(item)
 
-        self.clipboard.clear(mode=self.clipboard.Clipboard)
-        self.clipboard.setText(topic, mode=self.clipboard.Clipboard)
+        self.clipboard.clear(mode = self.clipboard.Clipboard)
+        self.clipboard.setText(topic, mode = self.clipboard.Clipboard)
 
     def copy_payload(self, item: QtWidgets.QTreeWidgetItem) -> None:
         """
@@ -363,8 +363,8 @@ class MQTTDebugWidget(BaseTabWidget):
         topic = _rebuild_topic(item)
         payload = self.get_payload(topic)
 
-        self.clipboard.clear(mode=self.clipboard.Clipboard)
-        self.clipboard.setText(payload, mode=self.clipboard.Clipboard)
+        self.clipboard.clear(mode = self.clipboard.Clipboard)
+        self.clipboard.setText(payload, mode = self.clipboard.Clipboard)
 
     def preload_data(self, item: QtWidgets.QTreeWidgetItem) -> None:
         """

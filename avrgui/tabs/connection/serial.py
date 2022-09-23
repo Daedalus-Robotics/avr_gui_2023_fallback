@@ -51,7 +51,7 @@ class SerialClient(QtCore.QObject):
             self.client.open()
 
             self.stop_thread = False
-            self.read_loop_thread = threading.Thread(target=self.read_loop)
+            self.read_loop_thread = threading.Thread(target = self.read_loop)
             self.read_loop_thread.start()
 
             # save settings
@@ -130,15 +130,15 @@ class SerialConnectionWidget(QtWidgets.QWidget):
 
         self.com_port_combo.addItems(serial_ports)
         self.com_port_combo.setCurrentIndex(
-            self.com_port_combo.findText(config.serial_port)
+                self.com_port_combo.findText(config.serial_port)
         )
         self.baud_rate_line_edit.setText(str(config.serial_baud_rate))
 
         # set up connections
         self.connect_button.clicked.connect(  # type: ignore
-            lambda: self.serial_client.login(
-                self.com_port_combo.currentText(), int(self.baud_rate_line_edit.text())
-            )
+                lambda: self.serial_client.login(
+                        self.com_port_combo.currentText(), int(self.baud_rate_line_edit.text())
+                )
         )
         self.disconnect_button.clicked.connect(self.serial_client.logout)  # type: ignore
 
@@ -158,7 +158,7 @@ class SerialConnectionWidget(QtWidgets.QWidget):
         ]
 
         self.state_label.setText(
-            f"State: {wrap_text(connection_state.name.title(), color_lookup[connection_state])}"
+                f"State: {wrap_text(connection_state.name.title(), color_lookup[connection_state])}"
         )
 
         self.disconnect_button.setEnabled(connected)
