@@ -1,0 +1,6 @@
+pyserial~=3.5
+paho-mqtt~=1.6.1
+loguru~=0.6.0
+colour~=0.1.5
+numpy~=1.23.3
+scipy~=1.9.1
