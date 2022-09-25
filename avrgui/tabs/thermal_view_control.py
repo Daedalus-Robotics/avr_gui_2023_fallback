@@ -44,7 +44,7 @@ class ThermalView(QtWidgets.QWidget):
         self.height_ = self.width_
 
         # pixels within canvas
-        self.pixels_x = 30
+        self.pixels_x = 8
         self.pixels_y = self.pixels_x
 
         self.pixel_width = self.width_ / self.pixels_x
@@ -107,34 +107,35 @@ class ThermalView(QtWidgets.QWidget):
         self.MINTEMP = self.last_lowest_temp + 0.0
         self.MAXTEMP = self.last_lowest_temp + 15.0
 
-    def update_canvas(self, pixels: List[int]) -> None:
-        float_pixels = [
-            map_value(p, self.MINTEMP, self.MAXTEMP, 0, self.COLORDEPTH - 1)
-            for p in pixels
-        ]
+    def update_canvas(self, pixels: np.ndarray) -> None:
+        # float_pixels = [
+        #     map_value(p, self.MINTEMP, self.MAXTEMP, 0, self.COLORDEPTH - 1)
+        #     for p in pixels
+        # ]
 
-        bicubic = scipy.interpolate.griddata(
-                self.points, float_pixels, (self.grid_x, self.grid_y), method = "cubic"
-        )
+        # bicubic = scipy.interpolate.griddata(
+        #         self.points, float_pixels, (self.grid_x, self.grid_y), method = "cubic"
+        # )
 
         pen = QtGui.QPen(QtCore.Qt.NoPen)
         self.canvas.clear()
 
-        for ix, row in enumerate(bicubic):
-            for jx, pixel in enumerate(row):
-                brush = QtGui.QBrush(
-                        QtGui.QColor(
-                                *self.colors[int(constrain(pixel, 0, self.COLORDEPTH - 1))]
-                        )
-                )
+        y = 0
+        for row in pixels:
+            x = 0
+            for pixel in row:
+                x += 1
+                brush = QtGui.QBrush(QtGui.QColor(pixel[0], pixel[1], pixel[2], 255))
                 self.canvas.addRect(
-                        self.pixel_width * jx,
-                        self.pixel_height * ix,
+                        self.pixel_width * x,
+                        self.pixel_height * y,
                         self.pixel_width,
                         self.pixel_height,
                         pen,
-                        brush,
+                        brush
                 )
+                print(pixel)
+            y += 1
 
 
 class JoystickWidget(BaseTabWidget):
@@ -316,6 +317,9 @@ class ThermalViewControlWidget(BaseTabWidget):
     def __init__(self, parent: QtWidgets.QWidget) -> None:
         super().__init__(parent)
 
+        self.joystick = None
+        self.viewer = None
+        self.streaming_checkbox = None
         self.setWindowTitle("Thermal View/Control")
 
     def build(self) -> None:
@@ -336,36 +340,13 @@ class ThermalViewControlWidget(BaseTabWidget):
         # set temp range
 
         # lay out the host label and line edit
-        temp_range_layout = QtWidgets.QFormLayout()
+        below_image_layout = QtWidgets.QFormLayout()
 
-        self.temp_min_line_edit = DoubleLineEdit()
-        temp_range_layout.addRow(QtWidgets.QLabel("Min Temp:"), self.temp_min_line_edit)
-        self.temp_min_line_edit.setText(str(self.viewer.MINTEMP))
+        self.streaming_checkbox = QtWidgets.QCheckBox("Enable Thermal Camera Streaming")
+        self.streaming_checkbox.toggled.connect(self.set_streaming)
+        below_image_layout.addRow(self.streaming_checkbox)
 
-        self.temp_max_line_edit = DoubleLineEdit()
-        temp_range_layout.addRow(QtWidgets.QLabel("Max Temp:"), self.temp_max_line_edit)
-        self.temp_max_line_edit.setText(str(self.viewer.MAXTEMP))
-
-        set_temp_range_button = QtWidgets.QPushButton("Set Temp Range")
-        temp_range_layout.addWidget(set_temp_range_button)
-
-        set_temp_range_calibrate_button = QtWidgets.QPushButton(
-                "Auto Calibrate Temp Range"
-        )
-        temp_range_layout.addWidget(set_temp_range_calibrate_button)
-
-        viewer_layout.addLayout(temp_range_layout)
-
-        set_temp_range_button.clicked.connect(  # type: ignore
-                lambda: self.viewer.set_temp_range(
-                        float(self.temp_min_line_edit.text()),
-                        float(self.temp_max_line_edit.text()),
-                )
-        )
-
-        set_temp_range_calibrate_button.clicked.connect(  # type: ignore
-                lambda: self.calibrate_temp()
-        )
+        viewer_layout.addLayout(below_image_layout)
 
         layout.addWidget(viewer_groupbox)
 
@@ -411,10 +392,8 @@ class ThermalViewControlWidget(BaseTabWidget):
         # don't allow us to shrink below size hint
         self.setMinimumSize(self.sizeHint())
 
-    def calibrate_temp(self) -> None:
-        self.viewer.set_calibrted_temp_range()
-        self.temp_min_line_edit.setText(str(self.viewer.MINTEMP))
-        self.temp_max_line_edit.setText(str(self.viewer.MAXTEMP))
+    def set_streaming(self):
+        self.send_message("avr/thermal/streaming", {"enabled": self.streaming_checkbox.isChecked()})
 
     def process_message(self, topic: str, payload: str) -> None:
         """
@@ -424,20 +403,17 @@ class ThermalViewControlWidget(BaseTabWidget):
         if topic != "avr/thermal/reading":
             return
 
-        data = json.loads(payload)["data"]
+        data = json.loads(payload)
 
-        # decode the payload
-        base64Decoded = data.encode("utf-8")
-        asbytes = base64.b64decode(base64Decoded)
-        pixel_ints = list(bytearray(asbytes))
+        pixels = np.array(data)
 
         # find lowest temp
-        lowest = min(pixel_ints)
-        self.viewer.last_lowest_temp = lowest
+        # lowest = min(pixel_ints)
+        # self.viewer.last_lowest_temp = lowest
 
         # update the canvase
         # pixel_ints = data
-        self.viewer.update_canvas(pixel_ints)
+        self.viewer.update_canvas(pixels)
 
     def clear(self) -> None:
         self.viewer.canvas.clear()
