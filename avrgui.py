@@ -17,6 +17,8 @@ from avrgui.tabs.vmc_telemetry import VMCTelemetryWidget
 from loguru import logger
 from PySide6 import QtCore, QtGui, QtWidgets
 
+from avrgui.tabs.water_drop import WaterDropWidget
+
 
 class TabBar(QtWidgets.QTabBar):
     """
@@ -245,7 +247,7 @@ class MainWindow(QtWidgets.QWidget):
 
         # water drop widget
 
-        self.water_drop_widget = HeadsUpDisplayWidget(self)
+        self.water_drop_widget = WaterDropWidget(self)
         self.water_drop_widget.build()
         self.water_drop_widget.pop_in.connect(self.tabs.pop_in)
         self.tabs.addTab(
