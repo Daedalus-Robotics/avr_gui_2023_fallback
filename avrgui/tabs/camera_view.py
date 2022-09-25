@@ -170,4 +170,6 @@ class CameraViewWidget(BaseTabWidget):
         pass
 
     def clear(self) -> None:
-        pass
+        self.is_streaming = False
+        self.streaming_button.setText("Start Streaming")
+        self.streaming_text.setText("Streaming: " + str(self.is_streaming))
