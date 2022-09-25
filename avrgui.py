@@ -106,7 +106,7 @@ class MainWindow(QtWidgets.QWidget):
         self.moving_map_widget = None
         self.vmc_control_widget = None
         self.thermal_view_control_widget = None
-        self.autonomy_widget = None
+        #self.autonomy_widget = None
         self.mqtt_debug_widget = None
         self.pcc_tester_widget = None
         set_icon(self)
@@ -256,7 +256,7 @@ class MainWindow(QtWidgets.QWidget):
             self.vmc_telemetry_widget,
             self.thermal_view_control_widget,
             self.moving_map_widget,
-            self.autonomy_widget,
+            #self.autonomy_widget,
         ]
 
         # disable/enable widgets
