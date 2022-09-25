@@ -4,6 +4,7 @@ import sys
 from avrgui.lib.enums import ConnectionState
 from avrgui.lib.qt_icon import set_icon
 from avrgui.tabs.autonomy import AutonomyWidget
+from avrgui.tabs.camera_view import CameraViewWidget
 from avrgui.tabs.connection.main import MainConnectionWidget
 from avrgui.tabs.moving_map import MovingMapWidget
 from avrgui.tabs.mqtt_debug import MQTTDebugWidget
@@ -106,9 +107,12 @@ class MainWindow(QtWidgets.QWidget):
         self.moving_map_widget = None
         self.vmc_control_widget = None
         self.thermal_view_control_widget = None
-        #self.autonomy_widget = None
+        # self.autonomy_widget = None
         self.mqtt_debug_widget = None
         self.pcc_tester_widget = None
+
+        self.camera_view_widget = None
+
         set_icon(self)
         self.setWindowTitle("AVR GUI")
 
@@ -142,6 +146,31 @@ class MainWindow(QtWidgets.QWidget):
         self.main_connection_widget.serial_connection_widget.connection_state.connect(
                 self.set_serial_connected_state
         )
+
+        # mqtt debug widget
+
+        self.mqtt_debug_widget = MQTTDebugWidget(self)
+        self.mqtt_debug_widget.build()
+        self.mqtt_debug_widget.pop_in.connect(self.tabs.pop_in)
+        self.tabs.addTab(self.mqtt_debug_widget, self.mqtt_debug_widget.windowTitle())
+
+        self.main_connection_widget.mqtt_connection_widget.mqtt_client.message.connect(
+                self.mqtt_debug_widget.process_message
+        )
+        self.mqtt_debug_widget.emit_message.connect(
+                self.main_connection_widget.mqtt_connection_widget.mqtt_client.publish
+        )
+
+        # mqtt logger widget
+
+        # self.mqtt_logger_widget = MQTTLoggerWidget(self)
+        # self.mqtt_logger_widget.build()
+        # self.mqtt_logger_widget.pop_in.connect(self.tabs.pop_in)
+        # self.tabs.addTab(self.mqtt_logger_widget, self.mqtt_logger_widget.windowTitle())
+        #
+        # self.main_connection_widget.mqtt_connection_widget.mqtt_client.message.connect(
+        #         self.mqtt_logger_widget.process_message
+        # )
 
         # vmc telemetry widget
 
@@ -196,6 +225,24 @@ class MainWindow(QtWidgets.QWidget):
                 self.main_connection_widget.mqtt_connection_widget.mqtt_client.publish
         )
 
+        # camera view widget
+
+        self.camera_view_widget = CameraViewWidget(self)
+        self.camera_view_widget.build()
+        self.camera_view_widget.pop_in.connect(self.tabs.pop_in)
+        self.tabs.addTab(
+                self.camera_view_widget,
+                self.camera_view_widget.windowTitle(),
+        )
+
+        self.main_connection_widget.mqtt_connection_widget.mqtt_client.message.connect(
+                self.camera_view_widget.process_message
+        )
+
+        self.camera_view_widget.emit_message.connect(
+                self.main_connection_widget.mqtt_connection_widget.mqtt_client.publish
+        )
+
         # autonomy widget
 
         # self.autonomy_widget = AutonomyWidget(self)
@@ -205,31 +252,6 @@ class MainWindow(QtWidgets.QWidget):
         #
         # self.autonomy_widget.emit_message.connect(
         #         self.main_connection_widget.mqtt_connection_widget.mqtt_client.publish
-        # )
-
-        # mqtt debug widget
-
-        self.mqtt_debug_widget = MQTTDebugWidget(self)
-        self.mqtt_debug_widget.build()
-        self.mqtt_debug_widget.pop_in.connect(self.tabs.pop_in)
-        self.tabs.addTab(self.mqtt_debug_widget, self.mqtt_debug_widget.windowTitle())
-
-        self.main_connection_widget.mqtt_connection_widget.mqtt_client.message.connect(
-                self.mqtt_debug_widget.process_message
-        )
-        self.mqtt_debug_widget.emit_message.connect(
-                self.main_connection_widget.mqtt_connection_widget.mqtt_client.publish
-        )
-
-        # mqtt logger widget
-
-        # self.mqtt_logger_widget = MQTTLoggerWidget(self)
-        # self.mqtt_logger_widget.build()
-        # self.mqtt_logger_widget.pop_in.connect(self.tabs.pop_in)
-        # self.tabs.addTab(self.mqtt_logger_widget, self.mqtt_logger_widget.windowTitle())
-        #
-        # self.main_connection_widget.mqtt_connection_widget.mqtt_client.message.connect(
-        #         self.mqtt_logger_widget.process_message
         # )
 
         # pcc tester widget
@@ -256,7 +278,9 @@ class MainWindow(QtWidgets.QWidget):
             self.vmc_telemetry_widget,
             self.thermal_view_control_widget,
             self.moving_map_widget,
-            #self.autonomy_widget,
+            # self.autonomy_widget,
+
+            self.camera_view_widget
         ]
 
         # disable/enable widgets
@@ -275,6 +299,8 @@ class MainWindow(QtWidgets.QWidget):
             self.vmc_telemetry_widget.clear()
             self.thermal_view_control_widget.clear()
             self.moving_map_widget.clear()
+
+            self.camera_view_widget.clear()
 
     def set_serial_connected_state(self, connection_state: ConnectionState) -> None:
         self.serial_connected = connection_state == ConnectionState.connected
