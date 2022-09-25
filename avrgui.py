@@ -110,6 +110,7 @@ class MainWindow(QtWidgets.QWidget):
         self.vmc_control_widget = None
         self.thermal_view_control_widget = None
         self.camera_view_widget = None
+        self.water_drop_widget = None
         self.moving_map_widget = None
         # self.autonomy_widget = None
         self.heads_up_widget = None
@@ -242,6 +243,24 @@ class MainWindow(QtWidgets.QWidget):
                 self.main_connection_widget.mqtt_connection_widget.mqtt_client.publish
         )
 
+        # water drop widget
+
+        self.water_drop_widget = HeadsUpDisplayWidget(self)
+        self.water_drop_widget.build()
+        self.water_drop_widget.pop_in.connect(self.tabs.pop_in)
+        self.tabs.addTab(
+                self.water_drop_widget,
+                self.water_drop_widget.windowTitle(),
+        )
+
+        self.main_connection_widget.mqtt_connection_widget.mqtt_client.message.connect(
+                self.water_drop_widget.process_message
+        )
+
+        self.water_drop_widget.emit_message.connect(
+                self.main_connection_widget.mqtt_connection_widget.mqtt_client.publish
+        )
+
         # moving map widget
 
         self.moving_map_widget = MovingMapWidget(self)
@@ -297,6 +316,7 @@ class MainWindow(QtWidgets.QWidget):
             self.vmc_control_widget,
             self.thermal_view_control_widget,
             self.camera_view_widget,
+            self.water_drop_widget,
             self.moving_map_widget,
             # self.autonomy_widget,
             self.heads_up_widget,
@@ -318,6 +338,7 @@ class MainWindow(QtWidgets.QWidget):
             self.vmc_telemetry_widget.clear()
             self.thermal_view_control_widget.clear()
             self.camera_view_widget.clear()
+            self.water_drop_widget.clear()
             self.moving_map_widget.clear()
             self.heads_up_widget.clear()
 
