@@ -147,6 +147,15 @@ class MainWindow(QtWidgets.QWidget):
                 self.set_serial_connected_state
         )
 
+        # pcc tester widget
+
+        self.pcc_tester_widget = PCCTesterWidget(
+                self, self.main_connection_widget.serial_connection_widget.serial_client
+        )
+        self.pcc_tester_widget.build()
+        self.pcc_tester_widget.pop_in.connect(self.tabs.pop_in)
+        self.tabs.addTab(self.pcc_tester_widget, self.pcc_tester_widget.windowTitle())
+
         # mqtt debug widget
 
         self.mqtt_debug_widget = MQTTDebugWidget(self)
@@ -183,17 +192,6 @@ class MainWindow(QtWidgets.QWidget):
 
         self.main_connection_widget.mqtt_connection_widget.mqtt_client.message.connect(
                 self.vmc_telemetry_widget.process_message
-        )
-
-        # moving map widget
-
-        self.moving_map_widget = MovingMapWidget(self)
-        self.moving_map_widget.build()
-        self.moving_map_widget.pop_in.connect(self.tabs.pop_in)
-        self.tabs.addTab(self.moving_map_widget, self.moving_map_widget.windowTitle())
-
-        self.main_connection_widget.mqtt_connection_widget.mqtt_client.message.connect(
-                self.moving_map_widget.process_message
         )
 
         # vmc control widget
@@ -243,6 +241,17 @@ class MainWindow(QtWidgets.QWidget):
                 self.main_connection_widget.mqtt_connection_widget.mqtt_client.publish
         )
 
+        # moving map widget
+
+        self.moving_map_widget = MovingMapWidget(self)
+        self.moving_map_widget.build()
+        self.moving_map_widget.pop_in.connect(self.tabs.pop_in)
+        self.tabs.addTab(self.moving_map_widget, self.moving_map_widget.windowTitle())
+
+        self.main_connection_widget.mqtt_connection_widget.mqtt_client.message.connect(
+                self.moving_map_widget.process_message
+        )
+
         # autonomy widget
 
         # self.autonomy_widget = AutonomyWidget(self)
@@ -253,15 +262,6 @@ class MainWindow(QtWidgets.QWidget):
         # self.autonomy_widget.emit_message.connect(
         #         self.main_connection_widget.mqtt_connection_widget.mqtt_client.publish
         # )
-
-        # pcc tester widget
-
-        self.pcc_tester_widget = PCCTesterWidget(
-                self, self.main_connection_widget.serial_connection_widget.serial_client
-        )
-        self.pcc_tester_widget.build()
-        self.pcc_tester_widget.pop_in.connect(self.tabs.pop_in)
-        self.tabs.addTab(self.pcc_tester_widget, self.pcc_tester_widget.windowTitle())
 
         # set initial state
         self.set_mqtt_connected_state(ConnectionState.disconnected)
