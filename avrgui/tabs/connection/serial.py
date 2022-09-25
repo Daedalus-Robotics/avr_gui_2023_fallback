@@ -13,7 +13,7 @@ from ...lib.widgets import IntLineEdit
 
 
 class SerialClient(QtCore.QObject):
-    # This class is a more convential client object that gets passed around.
+    # This class is a more conventional client object that gets passed around.
     # There's much less threading complexities so we don't need a
     # pub/sub architecture like the MQTT class does
 

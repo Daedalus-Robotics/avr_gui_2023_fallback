@@ -134,7 +134,7 @@ class MQTTDebugWidget(BaseTabWidget):
 
         self.clipboard = QtWidgets.QApplication.clipboard()
 
-        self.setWindowTitle("MQTT Debugger")
+        self.setWindowTitle("MQTT")
 
         # secondary data store to maintain dict of topics and the last message recieved
         self.topic_payloads: Dict[str, Any] = {}

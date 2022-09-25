@@ -100,6 +100,15 @@ class MainWindow(QtWidgets.QWidget):
     def __init__(self) -> None:
         super().__init__()
 
+        self.tabs = None
+        self.main_connection_widget = None
+        self.vmc_telemetry_widget = None
+        self.moving_map_widget = None
+        self.vmc_control_widget = None
+        self.thermal_view_control_widget = None
+        self.autonomy_widget = None
+        self.mqtt_debug_widget = None
+        self.pcc_tester_widget = None
         set_icon(self)
         self.setWindowTitle("AVR GUI")
 
@@ -214,14 +223,14 @@ class MainWindow(QtWidgets.QWidget):
 
         # mqtt logger widget
 
-        self.mqtt_logger_widget = MQTTLoggerWidget(self)
-        self.mqtt_logger_widget.build()
-        self.mqtt_logger_widget.pop_in.connect(self.tabs.pop_in)
-        self.tabs.addTab(self.mqtt_logger_widget, self.mqtt_logger_widget.windowTitle())
-
-        self.main_connection_widget.mqtt_connection_widget.mqtt_client.message.connect(
-                self.mqtt_logger_widget.process_message
-        )
+        # self.mqtt_logger_widget = MQTTLoggerWidget(self)
+        # self.mqtt_logger_widget.build()
+        # self.mqtt_logger_widget.pop_in.connect(self.tabs.pop_in)
+        # self.tabs.addTab(self.mqtt_logger_widget, self.mqtt_logger_widget.windowTitle())
+        #
+        # self.main_connection_widget.mqtt_connection_widget.mqtt_client.message.connect(
+        #         self.mqtt_logger_widget.process_message
+        # )
 
         # pcc tester widget
 
@@ -242,7 +251,7 @@ class MainWindow(QtWidgets.QWidget):
         # list of widgets that are mqtt connected
         widgets = [
             self.mqtt_debug_widget,
-            self.mqtt_logger_widget,
+            # self.mqtt_logger_widget,
             self.vmc_control_widget,
             self.vmc_telemetry_widget,
             self.thermal_view_control_widget,
@@ -262,7 +271,7 @@ class MainWindow(QtWidgets.QWidget):
         # clear widgets to a starting state
         if not self.mqtt_connected:
             self.mqtt_debug_widget.clear()
-            self.mqtt_logger_widget.clear()
+            # self.mqtt_logger_widget.clear()
             self.vmc_telemetry_widget.clear()
             self.thermal_view_control_widget.clear()
             self.moving_map_widget.clear()
@@ -272,6 +281,7 @@ class MainWindow(QtWidgets.QWidget):
 
         # deal with pcc tester
         idx = self.tabs.indexOf(self.pcc_tester_widget)
+        self.tabs.tab_bar.setTabVisible(idx, self.serial_connected)
         self.tabs.setTabEnabled(idx, self.serial_connected)
         if not self.serial_connected:
             self.pcc_tester_widget.reset_all()
