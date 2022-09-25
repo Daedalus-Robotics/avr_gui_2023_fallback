@@ -5,3 +5,4 @@ colour~=0.1.5
 numpy~=1.23.3
 scipy~=1.9.1
 PySide6~=6.3.2
+bell-avr-libraries[serial, mqtt]~=0.1.9
