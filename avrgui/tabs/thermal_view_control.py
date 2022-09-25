@@ -417,3 +417,4 @@ class ThermalViewControlWidget(BaseTabWidget):
 
     def clear(self) -> None:
         self.viewer.canvas.clear()
+        self.streaming_checkbox.setChecked(False)
