@@ -198,14 +198,14 @@ class MainWindow(QtWidgets.QWidget):
 
         # autonomy widget
 
-        self.autonomy_widget = AutonomyWidget(self)
-        self.autonomy_widget.build()
-        self.autonomy_widget.pop_in.connect(self.tabs.pop_in)
-        self.tabs.addTab(self.autonomy_widget, self.autonomy_widget.windowTitle())
-
-        self.autonomy_widget.emit_message.connect(
-                self.main_connection_widget.mqtt_connection_widget.mqtt_client.publish
-        )
+        # self.autonomy_widget = AutonomyWidget(self)
+        # self.autonomy_widget.build()
+        # self.autonomy_widget.pop_in.connect(self.tabs.pop_in)
+        # self.tabs.addTab(self.autonomy_widget, self.autonomy_widget.windowTitle())
+        #
+        # self.autonomy_widget.emit_message.connect(
+        #         self.main_connection_widget.mqtt_connection_widget.mqtt_client.publish
+        # )
 
         # mqtt debug widget
 
