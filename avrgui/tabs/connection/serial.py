@@ -7,6 +7,7 @@ from loguru import logger
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from ...lib.color import wrap_text
+from ...lib.combo_box import ComboBox
 from ...lib.config import config
 from ...lib.enums import ConnectionState
 from ...lib.widgets import IntLineEdit
@@ -101,7 +102,8 @@ class SerialConnectionWidget(QtWidgets.QWidget):
         # lay out the host label and line edit
         host_layout = QtWidgets.QFormLayout()
 
-        self.com_port_combo = QtWidgets.QComboBox()
+        self.com_port_combo = ComboBox()
+        self.com_port_combo.clicked.connect(self.refresh_com_ports)
         host_layout.addRow(QtWidgets.QLabel("COM Port:"), self.com_port_combo)
 
         self.baud_rate_line_edit = IntLineEdit()
@@ -141,6 +143,11 @@ class SerialConnectionWidget(QtWidgets.QWidget):
                 )
         )
         self.disconnect_button.clicked.connect(self.serial_client.logout)  # type: ignore
+
+    def refresh_com_ports(self):
+        self.com_port_combo.clear()
+        serial_ports = list_serial_ports()
+        self.com_port_combo.addItems(serial_ports)
 
     def set_connected_state(self, connection_state: ConnectionState) -> None:
         color_lookup = {
