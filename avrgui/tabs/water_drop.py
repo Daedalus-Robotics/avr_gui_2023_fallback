@@ -43,7 +43,7 @@ class WaterDropWidget(BaseTabWidget):
         controls_groupbox.setFixedWidth(350)
         controls_groupbox.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Expanding)
 
-        layout.addWidget(controls_groupbox, 0, 1, 1, 0)
+        layout.addWidget(controls_groupbox, 0, 1, 0, 1)  # These cords don't make any sense to me, but they work
 
         # Loading
 
