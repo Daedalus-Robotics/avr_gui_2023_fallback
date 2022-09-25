@@ -6,6 +6,7 @@ from avrgui.lib.qt_icon import set_icon
 from avrgui.tabs.autonomy import AutonomyWidget
 from avrgui.tabs.camera_view import CameraViewWidget
 from avrgui.tabs.connection.main import MainConnectionWidget
+from avrgui.tabs.heads_up import HeadsUpDisplayWidget
 from avrgui.tabs.moving_map import MovingMapWidget
 from avrgui.tabs.mqtt_debug import MQTTDebugWidget
 from avrgui.tabs.mqtt_logger import MQTTLoggerWidget
@@ -103,15 +104,15 @@ class MainWindow(QtWidgets.QWidget):
 
         self.tabs = None
         self.main_connection_widget = None
+        self.pcc_tester_widget = None
+        self.mqtt_debug_widget = None
         self.vmc_telemetry_widget = None
-        self.moving_map_widget = None
         self.vmc_control_widget = None
         self.thermal_view_control_widget = None
-        # self.autonomy_widget = None
-        self.mqtt_debug_widget = None
-        self.pcc_tester_widget = None
-
         self.camera_view_widget = None
+        self.moving_map_widget = None
+        # self.autonomy_widget = None
+        self.heads_up_widget = None
 
         set_icon(self)
         self.setWindowTitle("AVR GUI")
@@ -263,6 +264,24 @@ class MainWindow(QtWidgets.QWidget):
         #         self.main_connection_widget.mqtt_connection_widget.mqtt_client.publish
         # )
 
+        # heads up display widget
+
+        self.heads_up_widget = HeadsUpDisplayWidget(self)
+        self.heads_up_widget.build()
+        self.heads_up_widget.pop_in.connect(self.tabs.pop_in)
+        self.tabs.addTab(
+                self.heads_up_widget,
+                self.heads_up_widget.windowTitle(),
+        )
+
+        self.main_connection_widget.mqtt_connection_widget.mqtt_client.message.connect(
+                self.heads_up_widget.process_message
+        )
+
+        self.heads_up_widget.emit_message.connect(
+                self.main_connection_widget.mqtt_connection_widget.mqtt_client.publish
+        )
+
         # set initial state
         self.set_mqtt_connected_state(ConnectionState.disconnected)
         self.set_serial_connected_state(ConnectionState.disconnected)
@@ -274,13 +293,13 @@ class MainWindow(QtWidgets.QWidget):
         widgets = [
             self.mqtt_debug_widget,
             # self.mqtt_logger_widget,
-            self.vmc_control_widget,
             self.vmc_telemetry_widget,
+            self.vmc_control_widget,
             self.thermal_view_control_widget,
+            self.camera_view_widget,
             self.moving_map_widget,
             # self.autonomy_widget,
-
-            self.camera_view_widget
+            self.heads_up_widget,
         ]
 
         # disable/enable widgets
@@ -298,9 +317,9 @@ class MainWindow(QtWidgets.QWidget):
             # self.mqtt_logger_widget.clear()
             self.vmc_telemetry_widget.clear()
             self.thermal_view_control_widget.clear()
-            self.moving_map_widget.clear()
-
             self.camera_view_widget.clear()
+            self.moving_map_widget.clear()
+            self.heads_up_widget.clear()
 
     def set_serial_connected_state(self, connection_state: ConnectionState) -> None:
         self.serial_connected = connection_state == ConnectionState.connected
