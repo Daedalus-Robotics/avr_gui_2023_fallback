@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from typing import Dict
 
+from PySide6 import QtCore, QtWidgets
 from bell.avr.mqtt.payloads import (
     AvrFcmAttitudeEulerPayload,
     AvrFcmBatteryPayload,
@@ -11,11 +12,10 @@ from bell.avr.mqtt.payloads import (
     AvrFcmLocationLocalPayload,
     AvrFcmStatusPayload,
 )
-from PySide6 import QtCore, QtWidgets
 
+from .base import BaseTabWidget
 from ..lib.color import smear_color, wrap_text
 from ..lib.widgets import DisplayLineEdit, StatusLabel
-from .base import BaseTabWidget
 
 
 class VMCTelemetryWidget(BaseTabWidget):
@@ -27,6 +27,8 @@ class VMCTelemetryWidget(BaseTabWidget):
         super().__init__(parent)
 
         self.setWindowTitle("VMC Telemetry")
+
+        self.frame_status = None
 
     def build(self) -> None:
         """
@@ -161,7 +163,7 @@ class VMCTelemetryWidget(BaseTabWidget):
 
         # ==========================
         # Status
-        module_status_groupbox = QtWidgets.QGroupBox("Module Status")
+        module_status_groupbox = QtWidgets.QGroupBox("Status")
         module_status_groupbox.setSizePolicy(
                 QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed
         )
@@ -173,9 +175,8 @@ class VMCTelemetryWidget(BaseTabWidget):
         # data structure to hold timers to reset services to unhealthy
         self.topic_timer: Dict[str, QtCore.QTimer] = {}
 
-        fcc_status = StatusLabel("FCM")
-        self.topic_status_map["avr/fcm"] = fcc_status
-        module_status_layout.addWidget(fcc_status)
+        self.frame_status = StatusLabel("Frame Server")
+        module_status_layout.addWidget(self.frame_status)
 
         # pcc_status = StatusLabel("PCM")
         # self.topic_status_map["avr/pcm"] = pcc_status
@@ -302,6 +303,7 @@ class VMCTelemetryWidget(BaseTabWidget):
     #     self.att_x_line_edit.setText(str(payload["x"]))
     #     self.att_y_line_edit.setText(str(payload["y"]))
     #     self.att_z_line_edit.setText(str(payload["z"]))
+
 
     def process_message(self, topic: str, payload: str) -> None:
         """
