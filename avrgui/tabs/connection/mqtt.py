@@ -23,6 +23,7 @@ class MQTTClient(QtCore.QObject):
     # Once the Signal objects are created, they transform into SignalInstance objects
     connection_state: QtCore.SignalInstance = QtCore.Signal(object)  # type: ignore
     message: QtCore.SignalInstance = QtCore.Signal(str, str)  # type: ignore
+    message_bytes: QtCore.SignalInstance = QtCore.Signal(str, bytes)
 
     def __init__(self) -> None:
         super().__init__()
@@ -44,7 +45,11 @@ class MQTTClient(QtCore.QObject):
         """
         Callback for every MQTT message
         """
-        self.message.emit(msg.topic, msg.payload.decode("utf-8"))
+        self.message_bytes.emit(msg.topic, msg.payload)
+        try:
+            self.message.emit(msg.topic, msg.payload.decode("utf-8"))
+        except UnicodeDecodeError:
+            pass
 
     def on_disconnect(self, client: mqtt.Client, userdata: Any, rc: int) -> None:
         """
@@ -108,6 +113,7 @@ class MQTTClient(QtCore.QObject):
 
 class MQTTConnectionWidget(QtWidgets.QWidget):
     connection_state: QtCore.SignalInstance = QtCore.Signal(object)  # type: ignore
+    current_host: str = ""
 
     def __init__(self, parent: QtWidgets.QWidget) -> None:
         super().__init__(parent)
@@ -199,3 +205,6 @@ class MQTTConnectionWidget(QtWidgets.QWidget):
 
         self.connection_state.emit(connection_state)
         QtGui.QGuiApplication.processEvents()
+
+        # noinspection PyBroadException
+        self.current_host = self.hostname_line_edit.text()
