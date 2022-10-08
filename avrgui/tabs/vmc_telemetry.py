@@ -28,8 +28,6 @@ class VMCTelemetryWidget(BaseTabWidget):
 
         self.setWindowTitle("VMC Telemetry")
 
-        self.frame_status = None
-
     def build(self) -> None:
         """
         Build the GUI layout
@@ -174,9 +172,6 @@ class VMCTelemetryWidget(BaseTabWidget):
         self.topic_status_map: Dict[str, StatusLabel] = {}
         # data structure to hold timers to reset services to unhealthy
         self.topic_timer: Dict[str, QtCore.QTimer] = {}
-
-        self.frame_status = StatusLabel("Frame Server")
-        module_status_layout.addWidget(self.frame_status)
 
         # pcc_status = StatusLabel("PCM")
         # self.topic_status_map["avr/pcm"] = pcc_status
