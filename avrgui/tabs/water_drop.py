@@ -10,6 +10,9 @@ class WaterDropWidget(BaseTabWidget):
 
         self.canvas = None
         self.view = None
+        self.streaming_button = None
+
+        self.is_streaming = False
 
         self.setWindowTitle("Water Drop")
 
@@ -43,6 +46,10 @@ class WaterDropWidget(BaseTabWidget):
         controls_groupbox.setFixedWidth(350)
         controls_groupbox.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Expanding)
 
+        self.streaming_button = QtWidgets.QPushButton("Start Streaming")
+        self.streaming_button.clicked.connect(self.toggle_streaming)
+        controls_layout.addWidget(self.streaming_button)
+
         layout.addWidget(controls_groupbox, 0, 1, 0, 1)  # These cords don't make any sense to me, but they work
 
         # Loading
@@ -54,6 +61,15 @@ class WaterDropWidget(BaseTabWidget):
         loading_groupbox.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
 
         layout.addWidget(loading_groupbox, 1, 0)
+
+    def toggle_streaming(self):
+        self.is_streaming = not self.is_streaming
+        if self.is_streaming:
+            self.streaming_button.setText("Stop Streaming")
+            # start streaming
+        else:
+            self.streaming_button.setText("Start Streaming")
+            # stop streaming
 
     def process_message(self, topic: str, payload: str) -> None:
         pass
