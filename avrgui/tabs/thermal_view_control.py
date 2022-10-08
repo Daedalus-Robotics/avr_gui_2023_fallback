@@ -17,6 +17,7 @@ from bell.avr.mqtt.payloads import (
 )
 from PySide6 import QtCore, QtGui, QtWidgets
 
+from ..lib import stream
 from ..lib.calc import constrain
 from ..lib.widgets import DoubleLineEdit
 from .base import BaseTabWidget
@@ -107,7 +108,15 @@ class ThermalView(QtWidgets.QWidget):
         self.MINTEMP = self.last_lowest_temp + 0.0
         self.MAXTEMP = self.last_lowest_temp + 15.0
 
-    def update_canvas(self, pixels: np.ndarray) -> None:
+    def check_size(self, height, width) -> None:
+        if not height == self.pixels_y or not width == self.pixels_x:
+            self.pixels_y = height
+            self.pixels_x = width
+
+            self.pixel_width = self.width_ / self.pixels_x
+            self.pixel_height = self.height_ / self.pixels_y
+
+    def update_canvas(self, frame: np.ndarray) -> None:
         # float_pixels = [
         #     map_value(p, self.MINTEMP, self.MAXTEMP, 0, self.COLORDEPTH - 1)
         #     for p in pixels
@@ -116,16 +125,19 @@ class ThermalView(QtWidgets.QWidget):
         # bicubic = scipy.interpolate.griddata(
         #         self.points, float_pixels, (self.grid_x, self.grid_y), method = "cubic"
         # )
+        #print(frame.shape)
+        #print(frame)
+        self.check_size(frame.shape[0], frame.shape[1])
 
         pen = QtGui.QPen(QtCore.Qt.NoPen)
         self.canvas.clear()
 
         y = 0
-        for row in pixels:
+        for row in frame:
             x = 0
             for pixel in row:
                 x += 1
-                brush = QtGui.QBrush(QtGui.QColor(pixel[0], pixel[1], pixel[2], 255))
+                brush = QtGui.QBrush(QtGui.QColor(pixel[2], pixel[1], pixel[0], 255))
                 self.canvas.addRect(
                         self.pixel_width * x,
                         self.pixel_height * y,
@@ -134,7 +146,6 @@ class ThermalView(QtWidgets.QWidget):
                         pen,
                         brush
                 )
-                print(pixel)
             y += 1
 
 
@@ -149,19 +160,19 @@ class JoystickWidget(BaseTabWidget):
         self.grabCenter = False
         self.__maxDistance = 100
 
-        self.lasttime = 0
+        self.last_time = 0
 
         self.current_y = 0
         self.current_x = 0
 
-        self.servoxmin = 10
-        self.servoymin = 10
-        self.servoxmax = 99
-        self.servoymax = 99
+        self.servoxmin = 0
+        self.servoymin = 0
+        self.servoxmax = 100
+        self.servoymax = 100
 
         # servo declarations
-        self.SERVO_ABS_MAX = 2200
-        self.SERVO_ABS_MIN = 700
+        self.SERVO_ABS_MAX = 2500
+        self.SERVO_ABS_MIN = 500
 
     def _center(self) -> QtCore.QPointF:
         """
@@ -194,15 +205,15 @@ class JoystickWidget(BaseTabWidget):
         Update the servos on joystick movement.
         """
         ms = int(round(time.time() * 1000))
-        timesince = ms - self.lasttime
+        timesince = ms - self.last_time
         if timesince < 50:
             return
-        self.lasttime = ms
+        self.last_time = ms
 
         # y_reversed = 100 - self.current_y
-
-        # x_servo_percent = round(map_value(self.current_x, 0, 100, 10, 99))
-        # y_servo_percent = round(map_value(y_reversed, 0, 100, 10, 99))
+        #
+        # x_servo_percent = round(map_value(self.current_x, 0, 200, 0, 100))
+        # y_servo_percent = round(map_value(y_reversed, 0, 200, 0, 100))
         #
         # if x_servo_percent < self.servoxmin:
         #     return
@@ -212,7 +223,7 @@ class JoystickWidget(BaseTabWidget):
         #     return
         # if y_servo_percent > self.servoymax:
         #     return
-        #
+
         # self.move_gimbal(x_servo_percent, y_servo_percent)
 
         y_reversed = 225 - self.current_y
@@ -220,11 +231,11 @@ class JoystickWidget(BaseTabWidget):
 
         x_servo_abs = round(
                 map_value(
-                        self.current_x + 25, 25, 225, self.SERVO_ABS_MIN, self.SERVO_ABS_MAX
+                        self.current_x + 25, 225, 25, self.SERVO_ABS_MIN, self.SERVO_ABS_MAX
                 )
         )
         y_servo_abs = round(
-                map_value(y_reversed, 25, 225, self.SERVO_ABS_MIN, self.SERVO_ABS_MAX)
+                map_value(y_reversed, 225, 25, self.SERVO_ABS_MIN, self.SERVO_ABS_MAX)
         )
 
         self.move_gimbal_absolute(x_servo_abs, y_servo_abs)
@@ -307,10 +318,13 @@ class JoystickWidget(BaseTabWidget):
             self.movingOffset = self._bound_joystick(event.pos())
             self.update()
 
-        # print(self.joystick_direction())
         self.current_x = self.movingOffset.x() - self._center().x() + self.__maxDistance
         self.current_y = self.movingOffset.y() - self._center().y() + self.__maxDistance
         self.update_servos()
+
+    def center_gimbal(self):
+        center = (500 + 2500) // 2
+        self.move_gimbal_absolute(center, center)
 
 
 class ThermalViewControlWidget(BaseTabWidget):
@@ -342,9 +356,9 @@ class ThermalViewControlWidget(BaseTabWidget):
         # lay out the host label and line edit
         below_image_layout = QtWidgets.QFormLayout()
 
-        self.streaming_checkbox = QtWidgets.QCheckBox("Enable Thermal Camera Streaming")
-        self.streaming_checkbox.toggled.connect(self.set_streaming)
-        below_image_layout.addRow(self.streaming_checkbox)
+        #self.streaming_checkbox = QtWidgets.QCheckBox("Enable Thermal Camera Streaming")
+        #self.streaming_checkbox.toggled.connect(self.set_streaming)
+        #below_image_layout.addRow(self.streaming_checkbox)
 
         viewer_layout.addLayout(below_image_layout)
 
@@ -361,6 +375,9 @@ class ThermalViewControlWidget(BaseTabWidget):
         self.joystick = JoystickWidget(self)
         sub_joystick_layout.addWidget(self.joystick)
 
+        center_gimbal_button = QtWidgets.QPushButton("Center Gimbal")
+        joystick_layout.addWidget(center_gimbal_button)
+
         fire_laser_button = QtWidgets.QPushButton("Laser Fire")
         joystick_layout.addWidget(fire_laser_button)
 
@@ -375,27 +392,30 @@ class ThermalViewControlWidget(BaseTabWidget):
         # connect signals
         self.joystick.emit_message.connect(self.emit_message.emit)
 
-        fire_laser_button.clicked.connect(  # type: ignore
+        # center_gimbal_button.clicked.connect(
+        #         lambda: self.joystick.grabCenter()
+        # )
+
+        fire_laser_button.clicked.connect(
                 lambda: self.send_message("avr/pcm/fire_laser", AvrPcmFireLaserPayload())
         )
 
-        laser_on_button.clicked.connect(  # type: ignore
+        center_gimbal_button.clicked.connect(
+                lambda: self.joystick.center_gimbal()
+        )
+
+        laser_on_button.clicked.connect(
                 lambda: self.send_message("avr/pcm/set_laser_on", AvrPcmSetLaserOnPayload())
         )
 
-        laser_off_button.clicked.connect(  # type: ignore
-                lambda: self.send_message(
-                        "avr/pcm/set_laser_off", AvrPcmSetLaserOffPayload()
-                )
+        laser_off_button.clicked.connect(
+                lambda: self.send_message("avr/pcm/set_laser_off", AvrPcmSetLaserOffPayload())
         )
 
         # don't allow us to shrink below size hint
         self.setMinimumSize(self.sizeHint())
 
-    def set_streaming(self):
-        self.send_message("avr/thermal/streaming", {"enabled": self.streaming_checkbox.isChecked()})
-
-    def process_message(self, topic: str, payload: str) -> None:
+    def process_message_bytes(self, topic: str, payload: bytes) -> None:
         """
         Process an incoming message and update the appropriate component
         """
@@ -403,9 +423,9 @@ class ThermalViewControlWidget(BaseTabWidget):
         if topic != "avr/thermal/reading":
             return
 
-        data = json.loads(payload)
-
-        pixels = np.array(data)
+        # success, frame = stream.decode_frame_uncompressed(payload)
+        # if success:
+        #     self.viewer.update_canvas(frame)
 
         # find lowest temp
         # lowest = min(pixel_ints)
@@ -413,8 +433,7 @@ class ThermalViewControlWidget(BaseTabWidget):
 
         # update the canvase
         # pixel_ints = data
-        self.viewer.update_canvas(pixels)
+        #self.viewer.update_canvas(pixels)
 
     def clear(self) -> None:
         self.viewer.canvas.clear()
-        self.streaming_checkbox.setChecked(False)
