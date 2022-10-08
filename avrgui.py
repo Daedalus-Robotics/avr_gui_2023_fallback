@@ -3,6 +3,7 @@ import sys
 
 from avrgui.lib.enums import ConnectionState
 from avrgui.lib.qt_icon import set_icon
+from avrgui.lib.toast import Toast
 from avrgui.tabs.autonomy import AutonomyWidget
 from avrgui.tabs.camera_view import CameraViewWidget
 from avrgui.tabs.connection.main import MainConnectionWidget
@@ -100,10 +101,11 @@ class MainWindow(QtWidgets.QWidget):
     """
     This is the main application class.
     """
-
     def __init__(self) -> None:
         super().__init__()
 
+        self.menu_bar = None
+        self.toast = None
         self.tabs = None
         self.main_connection_widget = None
         self.pcc_tester_widget = None
@@ -127,6 +129,9 @@ class MainWindow(QtWidgets.QWidget):
         """
         Build the GUI layout
         """
+        self.toast = Toast(self)
+        self.menu_bar = QtWidgets.QMenuBar()
+
         layout = QtWidgets.QVBoxLayout(self)
         self.setLayout(layout)
 
@@ -219,8 +224,8 @@ class MainWindow(QtWidgets.QWidget):
                 self.thermal_view_control_widget.windowTitle(),
         )
 
-        self.main_connection_widget.mqtt_connection_widget.mqtt_client.message.connect(
-                self.thermal_view_control_widget.process_message
+        self.main_connection_widget.mqtt_connection_widget.mqtt_client.message_bytes.connect(
+                self.thermal_view_control_widget.process_message_bytes
         )
 
         self.thermal_view_control_widget.emit_message.connect(
@@ -229,7 +234,7 @@ class MainWindow(QtWidgets.QWidget):
 
         # camera view widget
 
-        self.camera_view_widget = CameraViewWidget(self)
+        self.camera_view_widget = CameraViewWidget(self, toast = self.toast)
         self.camera_view_widget.build()
         self.camera_view_widget.pop_in.connect(self.tabs.pop_in)
         self.tabs.addTab(
@@ -244,6 +249,12 @@ class MainWindow(QtWidgets.QWidget):
         self.camera_view_widget.emit_message.connect(
                 self.main_connection_widget.mqtt_connection_widget.mqtt_client.publish
         )
+
+        self.main_connection_widget.mqtt_connection_widget.connection_state.connect(
+                self.camera_view_widget.mqtt_connection_state
+        )
+
+        self.menu_bar.addMenu(self.camera_view_widget.video_menu)
 
         # water drop widget
 
@@ -357,6 +368,9 @@ class MainWindow(QtWidgets.QWidget):
         else:
             self.tabs.setTabToolTip(idx, "")
 
+    def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
+        self.toast.window_resize_event(event)
+
     def closeEvent(self, event: QtGui.QCloseEvent) -> None:
         """
         Override close event to close all connections.
@@ -374,10 +388,27 @@ def main() -> None:
     # create Qt Application instance
     app = QtWidgets.QApplication()
 
+    app.setWindowIcon(QtGui.QIcon("assets/icon.png"))
+    app.setApplicationName("Team Daedalus AVR Gui")
+    app.setApplicationDisplayName("Team Daedalus AVR Gui")
+
     # create the main window
     w = MainWindow()
     w.build()
     w.show()
+
+    d = QtWidgets.QMenu(w)
+    mqtt_action = QtGui.QAction("Disconnect")
+    mqtt_action.triggered.connect(w.main_connection_widget.mqtt_connection_widget.mqtt_client.logout)
+    mqtt_action.setEnabled(False)
+    w.main_connection_widget.mqtt_connection_widget.connection_state.connect(
+            lambda state: mqtt_action.setEnabled(state == ConnectionState.connected)
+    )
+    w.main_connection_widget.mqtt_connection_widget.connection_state.connect(
+            lambda state: mqtt_action.setText("Disconnect MQTT" if state == ConnectionState.connected else "MQTT Disconnected")
+    )
+    d.addAction(mqtt_action)
+    d.setAsDockMenu()
 
     # run
     sys.exit(app.exec())
