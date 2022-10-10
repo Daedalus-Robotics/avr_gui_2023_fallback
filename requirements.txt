@@ -3,7 +3,7 @@ paho-mqtt~=1.6.1
 loguru~=0.6.0
 colour~=0.1.5
 numpy~=1.23.3
-scipy~=1.9.1
+scipy~=1.9.2
 PySide6~=6.3.2
 opencv-python~=4.6.0.66
 bell-avr-libraries[mqtt,serial]==0.1.9
