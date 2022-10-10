@@ -5,12 +5,13 @@ from typing import Any
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
+from .connection.mqtt import DEFAULT_QOS
 from ..lib.qt_icon import set_icon
 
 
 class BaseTabWidget(QtWidgets.QWidget):
     pop_in: QtCore.SignalInstance = QtCore.Signal(object)  # type: ignore
-    emit_message: QtCore.SignalInstance = QtCore.Signal(str, str)  # type: ignore
+    emit_message: QtCore.SignalInstance = QtCore.Signal(str, Any, int, bool)  # type: ignore
 
     def __init__(self, parent: QtWidgets.QWidget) -> None:
         super().__init__(parent)
@@ -20,14 +21,17 @@ class BaseTabWidget(QtWidgets.QWidget):
         self.pop_in.emit(self)
         return super().closeEvent(event)
 
-    def send_message(self, topic: str, payload: Any) -> None:
+    def send_message(self, topic: str, payload: Any, qos: int = DEFAULT_QOS, retain: bool = False) -> None:
         """
         Emit a Qt Signal for a message to be sent to the MQTT broker.
         """
-        if not isinstance(payload, str):
-            payload = json.dumps(payload)
+        if not isinstance(payload, (str, bytes)):
+            try:
+                payload = json.dumps(payload)
+            except ValueError:
+                pass
 
-        self.emit_message.emit(topic, payload)
+        self.emit_message.emit(topic, payload, qos, retain)
 
     def process_message(self, topic: str, payload: str) -> None:
         """

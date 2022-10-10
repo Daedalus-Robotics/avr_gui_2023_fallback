@@ -1,23 +1,25 @@
 from typing import Any
 
 import paho.mqtt.client as mqtt
-from loguru import logger
 from PySide6 import QtCore, QtGui, QtWidgets
+from loguru import logger
 
 from ...lib.color import wrap_text
 from ...lib.config import config
 from ...lib.enums import ConnectionState
 from ...lib.widgets import IntLineEdit
 
+DEFAULT_QOS = 1
+
 
 class MQTTClient(QtCore.QObject):
     # This class MUST inherit from QObject in order for the signals to work
 
     # This class works with a QSigna based architecture, as the MQTT client
-    # runs in a seperate thread. The callbacks from the MQTT client run in the same
+    # runs in a separate thread. The callbacks from the MQTT client run in the same
     # thread as the client and thus those cannot update the GUI, as only the
     # thread that started the GUI is allowed to update it. Thus, set up the
-    # MQTT client in a seperate class with signals that are emitted and connected to
+    # MQTT client in a separate class with signals that are emitted and connected to
     # so the data gets passed back to the GUI thread.
 
     # Once the Signal objects are created, they transform into SignalInstance objects
@@ -39,7 +41,7 @@ class MQTTClient(QtCore.QObject):
         """
         # subscribe to all topics
         logger.debug("Subscribing to all topics")
-        client.subscribe("#")
+        client.subscribe("#", DEFAULT_QOS)
 
     def on_message(self, client: mqtt.Client, userdata: Any, msg: mqtt.MQTTMessage) -> None:
         """
@@ -72,7 +74,7 @@ class MQTTClient(QtCore.QObject):
 
         try:
             # try to connect to MQTT server
-            self.client.connect(host=host, port=port, keepalive=60)
+            self.client.connect(host = host, port = port, keepalive = 60)
             self.client.loop_start()
 
             # save settings
@@ -100,7 +102,7 @@ class MQTTClient(QtCore.QObject):
         logger.info("Disconnected from MQTT server")
         self.connection_state.emit(ConnectionState.disconnected)
 
-    def publish(self, topic: str, payload: Any) -> None:
+    def publish(self, topic: str, payload: Any, qos: int = DEFAULT_QOS, retain: bool = False) -> None:
         """
         Publish an MQTT message. Proxy function to the underlying client
         """
@@ -108,7 +110,7 @@ class MQTTClient(QtCore.QObject):
             return
 
         logger.debug(f"Publishing message {topic}: {payload}")
-        self.client.publish(topic, payload)
+        self.client.publish(topic, payload, qos, retain)
 
 
 class MQTTConnectionWidget(QtWidgets.QWidget):
@@ -169,9 +171,9 @@ class MQTTConnectionWidget(QtWidgets.QWidget):
         # set up connections
         self.hostname_line_edit.returnPressed.connect(self.connect_button.click)  # type: ignore
         self.connect_button.clicked.connect(  # type: ignore
-            lambda: self.mqtt_client.login(
-                self.hostname_line_edit.text(), int(self.port_line_edit.text())
-            )
+                lambda: self.mqtt_client.login(
+                        self.hostname_line_edit.text(), int(self.port_line_edit.text())
+                )
         )
         self.disconnect_button.clicked.connect(self.mqtt_client.logout)  # type: ignore
 
@@ -194,7 +196,7 @@ class MQTTConnectionWidget(QtWidgets.QWidget):
         ]
 
         self.state_label.setText(
-            f"State: {wrap_text(connection_state.name.title(), color_lookup[connection_state])}"
+                f"State: {wrap_text(connection_state.name.title(), color_lookup[connection_state])}"
         )
 
         self.disconnect_button.setEnabled(connected)
