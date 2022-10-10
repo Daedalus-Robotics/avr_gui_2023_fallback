@@ -1,13 +1,11 @@
-import base64
-import json
 import math
 import time
 from enum import Enum, auto
-from typing import List, Optional, Tuple
+from typing import Optional
 
 import colour
 import numpy as np
-import scipy.interpolate
+from PySide6 import QtCore, QtGui, QtWidgets
 from bell.avr.mqtt.payloads import (
     AvrPcmFireLaserPayload,
     AvrPcmSetLaserOffPayload,
@@ -15,12 +13,9 @@ from bell.avr.mqtt.payloads import (
     AvrPcmSetServoAbsPayload,
     AvrPcmSetServoPctPayload,
 )
-from PySide6 import QtCore, QtGui, QtWidgets
 
-from ..lib import stream
-from ..lib.calc import constrain
-from ..lib.widgets import DoubleLineEdit
 from .base import BaseTabWidget
+from ..lib import stream
 
 
 def map_value(
@@ -125,8 +120,8 @@ class ThermalView(QtWidgets.QWidget):
         # bicubic = scipy.interpolate.griddata(
         #         self.points, float_pixels, (self.grid_x, self.grid_y), method = "cubic"
         # )
-        #print(frame.shape)
-        #print(frame)
+        # print(frame.shape)
+        # print(frame)
         self.check_size(frame.shape[0], frame.shape[1])
 
         pen = QtGui.QPen(QtCore.Qt.NoPen)
@@ -174,6 +169,9 @@ class JoystickWidget(BaseTabWidget):
         self.SERVO_ABS_MAX = 2500
         self.SERVO_ABS_MIN = 500
 
+    def process_message(self, topic: str, payload: str) -> None:
+        pass
+
     def _center(self) -> QtCore.QPointF:
         """
         Return the center of the widget.
@@ -210,37 +208,37 @@ class JoystickWidget(BaseTabWidget):
             return
         self.last_time = ms
 
-        # y_reversed = 100 - self.current_y
+        y_reversed = 100 - self.current_y
+
+        x_servo_percent = round(map_value(self.current_x, 0, 200, 0, 100))
+        y_servo_percent = round(map_value(y_reversed, 0, 200, 0, 100))
+
+        if x_servo_percent < self.servoxmin:
+            return
+        if y_servo_percent < self.servoymin:
+            return
+        if x_servo_percent > self.servoxmax:
+            return
+        if y_servo_percent > self.servoymax:
+            return
+
+        self.move_gimbal(x_servo_percent, y_servo_percent)
+
+        # y_reversed = 225 - self.current_y
+        # # side to side  270 left, 360 right
         #
-        # x_servo_percent = round(map_value(self.current_x, 0, 200, 0, 100))
-        # y_servo_percent = round(map_value(y_reversed, 0, 200, 0, 100))
+        # x_servo_abs = round(
+        #         map_value(
+        #                 self.current_x + 25, 225, 25, self.SERVO_ABS_MIN, self.SERVO_ABS_MAX
+        #         )
+        # )
+        # y_servo_abs = round(
+        #         map_value(y_reversed, 225, 25, self.SERVO_ABS_MIN, self.SERVO_ABS_MAX)
+        # )
         #
-        # if x_servo_percent < self.servoxmin:
-        #     return
-        # if y_servo_percent < self.servoymin:
-        #     return
-        # if x_servo_percent > self.servoxmax:
-        #     return
-        # if y_servo_percent > self.servoymax:
-        #     return
+        # self.move_gimbal_absolute(x_servo_abs, y_servo_abs)
 
-        # self.move_gimbal(x_servo_percent, y_servo_percent)
-
-        y_reversed = 225 - self.current_y
-        # side to side  270 left, 360 right
-
-        x_servo_abs = round(
-                map_value(
-                        self.current_x + 25, 225, 25, self.SERVO_ABS_MIN, self.SERVO_ABS_MAX
-                )
-        )
-        y_servo_abs = round(
-                map_value(y_reversed, 225, 25, self.SERVO_ABS_MIN, self.SERVO_ABS_MAX)
-        )
-
-        self.move_gimbal_absolute(x_servo_abs, y_servo_abs)
-
-    def _centerEllipse(self) -> QtCore.QRectF:
+    def _center_ellipse(self) -> QtCore.QRectF:
         # sourcery skip: assign-if-exp
         if self.grabCenter:
             center = self.movingOffset
@@ -264,27 +262,27 @@ class JoystickWidget(BaseTabWidget):
             point.setY(int(self._center().y() - self.__maxDistance))
         return point
 
-    def joystick_direction(self) -> Optional[Tuple[Direction, float]]:
+    def joystick_direction(self) -> Optional[tuple[Direction, float]]:
         """
         Retrieve the direction the joystick is moving
         """
         if not self.grabCenter:
             return None
 
-        normVector = QtCore.QLineF(self._center(), self.movingOffset)
-        currentDistance = normVector.length()
-        angle = normVector.angle()
+        norm_vector = QtCore.QLineF(self._center(), self.movingOffset)
+        current_distance = norm_vector.length()
+        angle = norm_vector.angle()
 
-        distance = min(currentDistance / self.__maxDistance, 1.0)
+        distance = min(current_distance / self.__maxDistance, 1.0)
 
         if 45 <= angle < 135:
-            return (Direction.Up, distance)
+            return Direction.Up, distance
         elif 135 <= angle < 225:
-            return (Direction.Left, distance)
+            return Direction.Left, distance
         elif 225 <= angle < 315:
-            return (Direction.Down, distance)
+            return Direction.Down, distance
 
-        return (Direction.Right, distance)
+        return Direction.Right, distance
 
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:
         painter = QtGui.QPainter(self)
@@ -299,13 +297,13 @@ class JoystickWidget(BaseTabWidget):
         painter.drawRect(bounds)
         painter.setBrush(QtCore.Qt.black)
 
-        painter.drawEllipse(self._centerEllipse())
+        painter.drawEllipse(self._center_ellipse())
 
     def mousePressEvent(self, event: QtGui.QMouseEvent) -> QtGui.QMouseEvent:
         """
         On a mouse press, check if we've clicked on the center of the joystick.
         """
-        self.grabCenter = self._centerEllipse().contains(event.pos())
+        self.grabCenter = self._center_ellipse().contains(event.pos())
         return event
 
     def mouseReleaseEvent(self, event: QtCore.QEvent) -> None:
@@ -322,9 +320,8 @@ class JoystickWidget(BaseTabWidget):
         self.current_y = self.movingOffset.y() - self._center().y() + self.__maxDistance
         self.update_servos()
 
-    def center_gimbal(self):
-        center = (500 + 2500) // 2
-        self.move_gimbal_absolute(center, center)
+    def center_gimbal(self) -> None:
+        self.move_gimbal(50, 50)
 
 
 class ThermalViewControlWidget(BaseTabWidget):
@@ -356,9 +353,9 @@ class ThermalViewControlWidget(BaseTabWidget):
         # lay out the host label and line edit
         below_image_layout = QtWidgets.QFormLayout()
 
-        #self.streaming_checkbox = QtWidgets.QCheckBox("Enable Thermal Camera Streaming")
-        #self.streaming_checkbox.toggled.connect(self.set_streaming)
-        #below_image_layout.addRow(self.streaming_checkbox)
+        # self.streaming_checkbox = QtWidgets.QCheckBox("Enable Thermal Camera Streaming")
+        # self.streaming_checkbox.toggled.connect(self.set_streaming)
+        # below_image_layout.addRow(self.streaming_checkbox)
 
         viewer_layout.addLayout(below_image_layout)
 
@@ -415,6 +412,9 @@ class ThermalViewControlWidget(BaseTabWidget):
         # don't allow us to shrink below size hint
         self.setMinimumSize(self.sizeHint())
 
+    def process_message(self, topic: str, payload: str) -> None:
+        pass
+
     def process_message_bytes(self, topic: str, payload: bytes) -> None:
         """
         Process an incoming message and update the appropriate component
@@ -423,17 +423,9 @@ class ThermalViewControlWidget(BaseTabWidget):
         if topic != "avr/thermal/reading":
             return
 
-        # success, frame = stream.decode_frame_uncompressed(payload)
-        # if success:
-        #     self.viewer.update_canvas(frame)
-
-        # find lowest temp
-        # lowest = min(pixel_ints)
-        # self.viewer.last_lowest_temp = lowest
-
-        # update the canvase
-        # pixel_ints = data
-        #self.viewer.update_canvas(pixels)
+        success, frame = stream.decode_frame_uncompressed(payload)
+        if success:
+            self.viewer.update_canvas(frame)
 
     def clear(self) -> None:
         self.viewer.canvas.clear()
