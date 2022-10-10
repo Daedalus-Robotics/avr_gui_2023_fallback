@@ -205,14 +205,14 @@ class MainWindow(QtWidgets.QWidget):
 
         # vmc control widget
 
-        self.vmc_control_widget = VMCControlWidget(self)
-        self.vmc_control_widget.build()
-        self.vmc_control_widget.pop_in.connect(self.tabs.pop_in)
-        self.tabs.addTab(self.vmc_control_widget, self.vmc_control_widget.windowTitle())
-
-        self.vmc_control_widget.emit_message.connect(
-                self.main_connection_widget.mqtt_connection_widget.mqtt_client.publish
-        )
+        # self.vmc_control_widget = VMCControlWidget(self)
+        # self.vmc_control_widget.build()
+        # self.vmc_control_widget.pop_in.connect(self.tabs.pop_in)
+        # self.tabs.addTab(self.vmc_control_widget, self.vmc_control_widget.windowTitle())
+        #
+        # self.vmc_control_widget.emit_message.connect(
+        #         self.main_connection_widget.mqtt_connection_widget.mqtt_client.publish
+        # )
 
         # thermal view widget
 
