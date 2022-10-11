@@ -203,6 +203,10 @@ class MainWindow(QtWidgets.QWidget):
                 self.vmc_telemetry_widget.process_message
         )
 
+        self.vmc_telemetry_widget.emit_message.connect(
+                self.main_connection_widget.mqtt_connection_widget.mqtt_client.publish
+        )
+
         # vmc control widget
 
         # self.vmc_control_widget = VMCControlWidget(self)
