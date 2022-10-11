@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Dict
+from typing import Callable
 
 from PySide6 import QtCore, QtWidgets
 from bell.avr.mqtt.payloads import (
@@ -25,6 +25,28 @@ class VMCTelemetryWidget(BaseTabWidget):
 
     def __init__(self, parent: QtWidgets.QWidget) -> None:
         super().__init__(parent)
+
+        self.satellites_label = None
+        self.battery_percent_bar = None
+        self.battery_voltage_label = None
+        self.armed_label = None
+
+        self.loc_x_line_edit = None
+        self.loc_y_line_edit = None
+        self.loc_z_line_edit = None
+        self.loc_lat_line_edit = None
+        self.loc_lon_line_edit = None
+        self.loc_alt_line_edit = None
+        self.att_r_line_edit = None
+        self.att_p_line_edit = None
+        self.att_y_line_edit = None
+        self.flight_mode_label = None
+
+        self.service_map: dict[str, Callable] = {}
+        self.mavp2p_status_label = None
+        self.fcm_status_label = None
+        self.pcm_status_label = None
+        self.vmc_status_label = None
 
         self.setWindowTitle("VMC Telemetry")
 
@@ -160,36 +182,118 @@ class VMCTelemetryWidget(BaseTabWidget):
         layout.addWidget(bottom_group)
 
         # ==========================
-        # Status
-        module_status_groupbox = QtWidgets.QGroupBox("Status")
-        module_status_groupbox.setSizePolicy(
+        # # Status
+        # module_status_groupbox = QtWidgets.QGroupBox("Status")
+        # module_status_groupbox.setSizePolicy(
+        #         QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed
+        # )
+        # module_status_layout = QtWidgets.QHBoxLayout()
+        # module_status_groupbox.setLayout(module_status_layout)
+        #
+        # # data structure to hold the topic prefixes and the corresponding widget
+        # self.topic_status_map: Dict[str, StatusLabel] = {}
+        # # data structure to hold timers to reset services to unhealthy
+        # self.topic_timer: Dict[str, QtCore.QTimer] = {}
+        #
+        # # pcc_status = StatusLabel("PCM")
+        # # self.topic_status_map["avr/pcm"] = pcc_status
+        # # status_layout.addWidget(pcc_status)
+        #
+        # vio_status = StatusLabel("VIO")
+        # self.topic_status_map["avr/vio"] = vio_status
+        # module_status_layout.addWidget(vio_status)
+        #
+        # at_status = StatusLabel("AT")
+        # self.topic_status_map["avr/apriltag"] = at_status
+        # module_status_layout.addWidget(at_status)
+        #
+        # fus_status = StatusLabel("FUS")
+        # self.topic_status_map["avr/fusion"] = fus_status
+        # module_status_layout.addWidget(fus_status)
+        #
+        # layout.addWidget(module_status_groupbox)
+
+        states_groupbox = QtWidgets.QGroupBox("States")
+        states_groupbox.setSizePolicy(
                 QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed
         )
-        module_status_layout = QtWidgets.QHBoxLayout()
-        module_status_groupbox.setLayout(module_status_layout)
+        states_layout = QtWidgets.QGridLayout()
+        states_groupbox.setLayout(states_layout)
 
-        # data structure to hold the topic prefixes and the corresponding widget
-        self.topic_status_map: Dict[str, StatusLabel] = {}
-        # data structure to hold timers to reset services to unhealthy
-        self.topic_timer: Dict[str, QtCore.QTimer] = {}
+        y = 0
 
-        # pcc_status = StatusLabel("PCM")
-        # self.topic_status_map["avr/pcm"] = pcc_status
-        # status_layout.addWidget(pcc_status)
+        self.mavp2p_status_label = StatusLabel("MavP2P")
+        restart_button = QtWidgets.QPushButton("Restart")
+        restart_button.clicked.connect(lambda: self.restart_service("mavp2p", False))
+        states_layout.addWidget(self.mavp2p_status_label, y, 0)
+        states_layout.addWidget(restart_button, y, 1)
+        self.service_map["mavp2p"] = self.mavp2p_status_label.set_health
 
-        vio_status = StatusLabel("VIO")
-        self.topic_status_map["avr/vio"] = vio_status
-        module_status_layout.addWidget(vio_status)
+        y += 1
 
-        at_status = StatusLabel("AT")
-        self.topic_status_map["avr/apriltag"] = at_status
-        module_status_layout.addWidget(at_status)
+        self.fcm_status_label = StatusLabel("Flight Controller")
+        restart_button = QtWidgets.QPushButton("Restart")
+        fcm_restart_message = "This will restart the flight controller.\nIf the avr drone is currently flying, it will fall."
+        restart_button.clicked.connect(lambda: self.restart_service("fcm", True, fcm_restart_message))
+        states_layout.addWidget(self.fcm_status_label, y, 0)
+        states_layout.addWidget(restart_button, y, 1)
+        self.service_map["fcm"] = self.fcm_status_label.set_health
 
-        fus_status = StatusLabel("FUS")
-        self.topic_status_map["avr/fusion"] = fus_status
-        module_status_layout.addWidget(fus_status)
+        y += 1
 
-        layout.addWidget(module_status_groupbox)
+        self.pcm_status_label = StatusLabel("Peripheral Controller")
+        restart_button = QtWidgets.QPushButton("Restart")
+        restart_button.clicked.connect(lambda: self.restart_service("pcm", False))
+        states_layout.addWidget(self.pcm_status_label, y, 0)
+        states_layout.addWidget(restart_button, 2, 1)
+        self.service_map["pcm"] = self.pcm_status_label.set_health
+
+        y += 1
+
+        self.vmc_status_label = StatusLabel("Vehicle Management")
+        restart_button = QtWidgets.QPushButton("Restart")
+        vmc_restart_message = "This will restart the vehicle management computer.\nThis will disable all autonomy for at least a minute."
+        restart_button.clicked.connect(lambda: self.restart_service("vmc", True, vmc_restart_message))
+        states_layout.addWidget(self.vmc_status_label, y, 0)
+        states_layout.addWidget(restart_button, y, 1)
+        self.service_map["vmc"] = self.vmc_status_label.set_health
+
+        layout.addWidget(states_groupbox)
+
+    def update_service_status(self, payload: dict[str, bool]) -> None:
+        for name, state in payload.items():
+            if name in self.service_map:
+                self.service_map[name](state)
+
+    def restart_service(self, service: str, show_dialog: bool, message: str = "") -> None:
+        do_reset = True
+        if show_dialog:
+            if '\n' in message:
+                split = message.split('‡')
+                message = ""
+                num = 0
+                for text in split[0:-1]:
+                    message += text
+                    if not num == len(split[0:-1]) - 1:
+                        message += "\n"
+                    num += 1
+                info = split[-1]
+            else:
+                info = None
+
+            dialog = QtWidgets.QMessageBox()
+            dialog.setWindowTitle(f"Restart {service}")
+            dialog.setText(message)
+            if info is not None:
+                dialog.setInformativeText(info)
+            dialog.setIcon(QtWidgets.QMessageBox.Critical)
+            dialog.setStandardButtons(QtWidgets.QMessageBox.Cancel | QtWidgets.QMessageBox.Ok)
+            dialog.setDefaultButton(QtWidgets.QMessageBox.Ok)
+            dialog.setEscapeButton(QtWidgets.QMessageBox.Cancel)
+            if dialog.exec_() != QtWidgets.QMessageBox.Ok:
+                do_reset = False
+        if do_reset:
+            self.send_message(f"avr/status/restart/{service}", {})
 
     def clear(self) -> None:
         # status
@@ -299,7 +403,6 @@ class VMCTelemetryWidget(BaseTabWidget):
     #     self.att_y_line_edit.setText(str(payload["y"]))
     #     self.att_z_line_edit.setText(str(payload["z"]))
 
-
     def process_message(self, topic: str, payload: str) -> None:
         """
         Process an incoming message and update the appropriate component
@@ -311,34 +414,36 @@ class VMCTelemetryWidget(BaseTabWidget):
             "avr/fcm/location/local": self.update_local_location,
             "avr/fcm/location/global": self.update_global_location,
             "avr/fcm/attitude/euler": self.update_euler_attitude,
+            "avr/status/update": self.update_service_status
         }
 
         # discard topics we don't recognize
         if topic in topic_map:
-            data = json.loads(payload)
+            data: dict = json.loads(payload)
+            # noinspection PyArgumentList
             topic_map[topic](data)
 
-        for status_prefix in self.topic_status_map.keys():
-            if not topic.startswith(status_prefix):
-                continue
-
-            # set icon to healthy
-            status_label = self.topic_status_map[status_prefix]
-            status_label.set_health(True)
-
-            # reset existing timer
-            if status_prefix in self.topic_timer:
-                timer = self.topic_timer[status_prefix]
-                timer.stop()
-                timer.deleteLater()
-
-            # create a new timer
-            # Can't do .singleShot on an exisiting QTimer as that
-            # creates a new instance
-            timer = QtCore.QTimer()
-            timer.timeout.connect(lambda: status_label.set_health(False))  # type: ignore
-            timer.setSingleShot(True)
-            timer.start(2000)
-
-            self.topic_timer[status_prefix] = timer
-            break
+        # for status_prefix in self.topic_status_map.keys():
+        #     if not topic.startswith(status_prefix):
+        #         continue
+        #
+        #     # set icon to healthy
+        #     status_label = self.topic_status_map[status_prefix]
+        #     status_label.set_health(True)
+        #
+        #     # reset existing timer
+        #     if status_prefix in self.topic_timer:
+        #         timer = self.topic_timer[status_prefix]
+        #         timer.stop()
+        #         timer.deleteLater()
+        #
+        #     # create a new timer
+        #     # Can't do .singleShot on an exisiting QTimer as that
+        #     # creates a new instance
+        #     timer = QtCore.QTimer()
+        #     timer.timeout.connect(lambda: status_label.set_health(False))  # type: ignore
+        #     timer.setSingleShot(True)
+        #     timer.start(2000)
+        #
+        #     self.topic_timer[status_prefix] = timer
+        #     break
