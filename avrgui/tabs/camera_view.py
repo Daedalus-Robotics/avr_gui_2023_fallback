@@ -195,7 +195,7 @@ class CameraViewWidget(BaseTabWidget):
         index = camera.get("index", -1)
         if index >= 0:
             self.set_camera_info(camera)
-            self.send_message("avr/camera/select", index)
+            self.send_message("avr/camera/select", {"index": index})
 
     def set_camera_info(self, camera: dict) -> None:
         resolution = camera.get("resolution", DEFAULT_CAMERA["resolution"])
