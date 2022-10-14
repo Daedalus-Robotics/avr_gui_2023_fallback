@@ -175,7 +175,7 @@ class MQTTDebugWidget(BaseTabWidget):
 
         self.data_view = QtWidgets.QTextEdit()
         self.data_view.setReadOnly(True)
-        self.data_view.setStyleSheet("background-color: rgb(220, 220, 220)")
+        # self.data_view.setStyleSheet("background-color: rgb(220, 220, 220)")
         viewer_splitter.addWidget(self.data_view)
 
         viewer_layout.addWidget(viewer_splitter)
@@ -218,8 +218,8 @@ class MQTTDebugWidget(BaseTabWidget):
         self.topic_payloads = {}
         self.tree_widget.clear()
 
-        self.running = True
-        self.running_button.setText("Running")
+        self.running = False
+        self.running_button.setText("Paused")
 
     def toggle_running(self) -> None:
         """
