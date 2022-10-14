@@ -208,5 +208,8 @@ class MQTTConnectionWidget(QtWidgets.QWidget):
         self.connection_state.emit(connection_state)
         QtGui.QGuiApplication.processEvents()
 
-        # noinspection PyBroadException
-        self.current_host = self.hostname_line_edit.text()
+        self._set_current_host(self.hostname_line_edit.text())
+
+    @classmethod
+    def _set_current_host(cls, host: str) -> None:
+        cls.current_host = host
