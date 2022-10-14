@@ -48,6 +48,8 @@ class VMCTelemetryWidget(BaseTabWidget):
         self.pcm_status_label = None
         self.vmc_status_label = None
 
+        self.main_shutdown_button = None
+
         self.setWindowTitle("VMC Telemetry")
 
     def build(self) -> None:
@@ -260,6 +262,11 @@ class VMCTelemetryWidget(BaseTabWidget):
 
         layout.addWidget(states_groupbox)
 
+        self.main_shutdown_button = QtWidgets.QPushButton("Shutdown")
+        self.main_shutdown_button.clicked.connect(lambda: self.send_message("avr/shutdown", "", qos = 2))
+
+        layout.addWidget(self.main_shutdown_button)
+
     def update_service_status(self, payload: dict[str, bool]) -> None:
         for name, state in payload.items():
             if name in self.service_map:
@@ -362,9 +369,9 @@ class VMCTelemetryWidget(BaseTabWidget):
         """
         if payload["armed"]:
             color = "Red"
-            text = "Armed (and dangerous)"
+            text = "Armed"
         else:
-            color = "DarkGoldenRod"
+            color = "Green"
             text = "Disarmed"
 
         self.armed_label.setText(wrap_text(text, color))
