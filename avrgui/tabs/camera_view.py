@@ -202,9 +202,9 @@ class CameraViewWidget(BaseTabWidget):
         fov = camera.get("fov", DEFAULT_CAMERA["fov"])
         model = camera.get("model", DEFAULT_CAMERA["model"])
 
-        self.resolution_text.setText(f"Resolution: { resolution }")
-        self.fov_text.setText(f"FOV: { fov }º")
-        self.model_text.setText(f"Model: { model }")
+        self.resolution_text.setText(f"Resolution: {resolution}")
+        self.fov_text.setText(f"FOV: {fov}º")
+        self.model_text.setText(f"Model: {model}")
 
     @staticmethod
     def get_camera_name_from_index(index: int) -> str:
@@ -246,7 +246,7 @@ class CameraViewWidget(BaseTabWidget):
         return return_value
 
     def _update_loop(self, host: tuple[str, int]) -> None:
-        logger.debug(f"Socket client connecting to { host[0] }:{ host[1] }")
+        logger.debug(f"Socket client connecting to {host[0]}:{host[1]}")
         client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         client_socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, BUFF_SIZE)
         client_socket.sendto(b"connect", host)
