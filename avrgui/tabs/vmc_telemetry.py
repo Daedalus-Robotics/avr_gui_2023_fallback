@@ -234,19 +234,19 @@ class VMCTelemetryWidget(BaseTabWidget):
         self.fcm_status_label = StatusLabel("Flight Controller")
         restart_button = QtWidgets.QPushButton("Restart")
         fcm_restart_message = "This will restart the flight controller.\nIf the avr drone is currently flying, it will fall."
-        restart_button.clicked.connect(lambda: self.restart_service("fcm", True, fcm_restart_message))
+        restart_button.clicked.connect(lambda: self.restart_service("fcc", True, fcm_restart_message))
         states_layout.addWidget(self.fcm_status_label, y, 0)
         states_layout.addWidget(restart_button, y, 1)
-        self.service_map["fcm"] = self.fcm_status_label.set_health
+        self.service_map["fcc"] = self.fcm_status_label.set_health
 
         y += 1
 
         self.pcm_status_label = StatusLabel("Peripheral Controller")
         restart_button = QtWidgets.QPushButton("Restart")
-        restart_button.clicked.connect(lambda: self.restart_service("pcm", False))
+        restart_button.clicked.connect(lambda: self.restart_service("pcc", False))
         states_layout.addWidget(self.pcm_status_label, y, 0)
         states_layout.addWidget(restart_button, 2, 1)
-        self.service_map["pcm"] = self.pcm_status_label.set_health
+        self.service_map["pcc"] = self.pcm_status_label.set_health
 
         y += 1
 
@@ -293,7 +293,7 @@ class VMCTelemetryWidget(BaseTabWidget):
             if dialog.exec_() != QtWidgets.QMessageBox.Ok:
                 do_reset = False
         if do_reset:
-            self.send_message(f"avr/status/restart/{service}", {})
+            self.send_message(f"avr/status/restart/{service}", {}, 2)
 
     def clear(self) -> None:
         # status
