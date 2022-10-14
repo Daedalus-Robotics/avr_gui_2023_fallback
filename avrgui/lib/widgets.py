@@ -26,7 +26,7 @@ class DisplayLineEdit(QtWidgets.QLineEdit):
         self.round_digits = round_digits
 
         self.setReadOnly(True)
-        self.setStyleSheet("background-color: rgb(220, 220, 220)")
+        # self.setStyleSheet("background-color: rgb(220, 220, 220)")
         self.setMaximumWidth(100)
 
     def setText(self, arg__1: str) -> None:
