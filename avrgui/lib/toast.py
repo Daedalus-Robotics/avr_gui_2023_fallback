@@ -22,6 +22,7 @@ class Toast(QtWidgets.QWidget):
 
         layout = QtWidgets.QVBoxLayout()
         self.text = QtWidgets.QLabel()
+        self.text.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.text)
         self.setLayout(layout)
 
@@ -39,7 +40,7 @@ class Toast(QtWidgets.QWidget):
         window_height = size.height()
         window_width = size.width()
 
-        width = 250
+        width = 400
         x = (window_width // 2) - (width // 2)
         y = window_height - (HEIGHT // 2) - BOTTOM_OFFSET
 
