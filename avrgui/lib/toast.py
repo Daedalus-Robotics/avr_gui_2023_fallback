@@ -9,6 +9,7 @@ DEFAULT_TIMEOUT = 2.0
 
 class Toast(QtWidgets.QWidget):
     _instance = None
+    send_message = QtCore.Signal(str, float)
 
     @classmethod
     def get(cls, parent: QtWidgets.QWidget = None) -> "Toast":
