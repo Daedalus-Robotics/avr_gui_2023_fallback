@@ -1,19 +1,22 @@
 import argparse
+import os.path
 import sys
+
+from playsound import playsound
 
 from avrgui.lib.enums import ConnectionState
 from avrgui.lib.qt_icon import set_icon
 from avrgui.lib.toast import Toast
-from avrgui.tabs.autonomy import AutonomyWidget
+# from avrgui.tabs.autonomy import AutonomyWidget
 from avrgui.tabs.camera_view import CameraViewWidget
 from avrgui.tabs.connection.main import MainConnectionWidget
 from avrgui.tabs.heads_up import HeadsUpDisplayWidget
 from avrgui.tabs.moving_map import MovingMapWidget
 from avrgui.tabs.mqtt_debug import MQTTDebugWidget
-from avrgui.tabs.mqtt_logger import MQTTLoggerWidget
+# from avrgui.tabs.mqtt_logger import MQTTLoggerWidget
 from avrgui.tabs.pcc_tester import PCCTesterWidget
 from avrgui.tabs.thermal_view_control import ThermalViewControlWidget
-from avrgui.tabs.vmc_control import VMCControlWidget
+# from avrgui.tabs.vmc_control import VMCControlWidget
 from avrgui.tabs.vmc_telemetry import VMCTelemetryWidget
 from loguru import logger
 from PySide6 import QtCore, QtGui, QtWidgets
@@ -129,7 +132,7 @@ class MainWindow(QtWidgets.QWidget):
         """
         Build the GUI layout
         """
-        self.toast = Toast(self)
+        self.toast = Toast.get(self)
         self.menu_bar = QtWidgets.QMenuBar()
 
         layout = QtWidgets.QVBoxLayout(self)
@@ -238,7 +241,7 @@ class MainWindow(QtWidgets.QWidget):
 
         # camera view widget
 
-        self.camera_view_widget = CameraViewWidget(self, toast = self.toast)
+        self.camera_view_widget = CameraViewWidget(self)
         self.camera_view_widget.build()
         self.camera_view_widget.pop_in.connect(self.tabs.pop_in)
         self.tabs.addTab(
@@ -388,6 +391,13 @@ class MainWindow(QtWidgets.QWidget):
         event.accept()
 
 
+def on_message(topic: str, payload: dict) -> None:
+    if "avr/gui/sound/" in topic:
+        filename = topic[len("avr/gui/sound/"):]
+        if os.path.isfile(f"assets/sound/{filename}.wav"):
+            playsound(f"assets/sound/{filename}.wav", block = False)
+
+
 def main() -> None:
     # create Qt Application instance
     app = QtWidgets.QApplication()
@@ -413,6 +423,8 @@ def main() -> None:
     )
     d.addAction(mqtt_action)
     d.setAsDockMenu()
+
+    w.main_connection_widget.mqtt_connection_widget.mqtt_client.message.connect(on_message)
 
     # run
     sys.exit(app.exec())
