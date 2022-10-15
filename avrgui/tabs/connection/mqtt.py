@@ -7,6 +7,7 @@ from loguru import logger
 from ...lib.color import wrap_text
 from ...lib.config import config
 from ...lib.enums import ConnectionState
+from ...lib.toast import Toast
 from ...lib.widgets import IntLineEdit
 
 DEFAULT_QOS = 1
@@ -35,6 +36,8 @@ class MQTTClient(QtCore.QObject):
         self.client.on_message = self.on_message
         self.client.on_disconnect = self.on_disconnect
 
+        self.wanted_state = False
+
     def on_connect(self, client: mqtt.Client, userdata: Any, flags: dict, rc: int) -> None:
         """
         Callback when the MQTT client connects
@@ -59,6 +62,9 @@ class MQTTClient(QtCore.QObject):
         """
         logger.debug("Disconnected from MQTT server")
         self.connection_state.emit(ConnectionState.disconnected)
+        if self.wanted_state is True:
+            Toast.get().send_message.emit("Lost connection to mqtt broker!", 3.0)
+            self.message.emit("avr/gui/sound/critical", {})
 
     def login(self, host: str, port: int) -> None:
         """
@@ -84,6 +90,7 @@ class MQTTClient(QtCore.QObject):
             # emit success
             logger.success("Connected to MQTT server")
             self.connection_state.emit(ConnectionState.connected)
+            self.wanted_state = True
 
         except Exception:
             logger.exception("Connection failed to MQTT server")
@@ -93,6 +100,7 @@ class MQTTClient(QtCore.QObject):
         """
         Disconnect the MQTT client to the server.
         """
+        self.wanted_state = False
         logger.info("Disconnecting from MQTT server")
         self.connection_state.emit(ConnectionState.disconnecting)
 
