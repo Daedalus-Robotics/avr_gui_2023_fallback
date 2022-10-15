@@ -28,6 +28,8 @@ class Toast(QtWidgets.QWidget):
         self.timer = QtCore.QTimer()
         self.timer.timeout.connect(lambda: self.setVisible(False))
 
+        self.send_message.connect(self.show_message)
+
         self.setVisible(False)
 
     def window_resize_event(self, event: QtGui.QResizeEvent) -> None:
