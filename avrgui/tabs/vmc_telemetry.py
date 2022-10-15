@@ -15,6 +15,7 @@ from bell.avr.mqtt.payloads import (
 
 from .base import BaseTabWidget
 from ..lib.color import smear_color, wrap_text
+from ..lib.toast import Toast
 from ..lib.widgets import DisplayLineEdit, StatusLabel
 
 
@@ -271,6 +272,19 @@ class VMCTelemetryWidget(BaseTabWidget):
         for name, state in payload.items():
             if name in self.service_map:
                 self.service_map[name](state)
+                if not state:
+                    if name == "mavp2p":
+                        self.send_message("avr/gui/sound/beep", {})
+                        Toast.get().send_message.emit("Mavp2p has stopped!", 2.0)
+                    elif name == "fcc":
+                        self.send_message("avr/gui/sound/beep", {})
+                        Toast.get().send_message.emit("Lost connection to the flight controller!", 2.0)
+                    elif name == "pcc":
+                        self.send_message("avr/gui/sound/beep", {})
+                        Toast.get().send_message.emit("Lost connection to the peripheral controller!", 2.0)
+                    elif name == "vmc":
+                        self.send_message("avr/gui/sound/beep", {})
+                        Toast.get().send_message.emit("The vmc is shutting down!", 2.0)
 
     def restart_service(self, service: str, show_dialog: bool, message: str = "") -> None:
         do_reset = True
@@ -341,6 +355,9 @@ class VMCTelemetryWidget(BaseTabWidget):
         # prevent it from going above 100
         soc = min(soc, 100)
 
+        if soc < 20:
+            self.send_message("avr/gui/sound/battery_alert", {})
+            Toast.get().send_message.emit("Low battery!", 3.0)
         self.battery_percent_bar.setValue(int(soc))
         self.battery_voltage_label.setText(f"{round(payload['voltage'], 4)} Volts")
 
