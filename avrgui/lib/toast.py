@@ -8,6 +8,14 @@ DEFAULT_TIMEOUT = 2.0
 
 
 class Toast(QtWidgets.QWidget):
+    _instance = None
+
+    @classmethod
+    def get(cls, parent: QtWidgets.QWidget = None) -> "Toast":
+        if cls._instance is None:
+            cls._instance = Toast(parent)
+        return cls._instance
+
     def __init__(self, parent: QtWidgets.QWidget):
         super().__init__(parent)
 
