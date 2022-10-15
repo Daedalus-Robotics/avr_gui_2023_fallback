@@ -404,7 +404,6 @@ def main() -> None:
     pixmap = QtGui.QPixmap("assets/splash.png")
     splash = QtWidgets.QSplashScreen(pixmap)
     splash.show()
-    splash.showMessage("Starting...")
     app.processEvents()
 
     app.setWindowIcon(QtGui.QIcon("assets/icon.png"))
@@ -416,16 +415,33 @@ def main() -> None:
     w.build()
 
     d = QtWidgets.QMenu(w)
-    mqtt_action = QtGui.QAction("Disconnect")
+    mqtt_action = QtGui.QAction("MQTT Disconnected")
     mqtt_action.triggered.connect(w.main_connection_widget.mqtt_connection_widget.mqtt_client.logout)
     mqtt_action.setEnabled(False)
     w.main_connection_widget.mqtt_connection_widget.connection_state.connect(
             lambda state: mqtt_action.setEnabled(state == ConnectionState.connected)
     )
     w.main_connection_widget.mqtt_connection_widget.connection_state.connect(
-            lambda state: mqtt_action.setText("Disconnect MQTT" if state == ConnectionState.connected else "MQTT Disconnected")
+            lambda state: mqtt_action.setText(
+                    "Disconnect MQTT" if state == ConnectionState.connected else "MQTT Disconnected"
+            )
     )
     d.addAction(mqtt_action)
+
+    kill_action = QtGui.QAction("Kill Motors")
+    mqtt_action.triggered.connect(
+            w.main_connection_widget.mqtt_connection_widget.mqtt_client.publish(
+                    "avr/kill", "", qos = 2
+            )
+    )
+    kill_action.setEnabled(False)
+    w.main_connection_widget.mqtt_connection_widget.connection_state.connect(
+            lambda state: kill_action.setEnabled(
+                    True if state == ConnectionState.connected else False
+            )
+    )
+    d.addAction(kill_action)
+
     d.setAsDockMenu()
 
     w.main_connection_widget.mqtt_connection_widget.mqtt_client.message.connect(on_message)
