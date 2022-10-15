@@ -401,6 +401,11 @@ def on_message(topic: str, payload: dict) -> None:
 def main() -> None:
     # create Qt Application instance
     app = QtWidgets.QApplication()
+    pixmap = QtGui.QPixmap("assets/splash.png")
+    splash = QtWidgets.QSplashScreen(pixmap)
+    splash.show()
+    splash.showMessage("Starting...")
+    app.processEvents()
 
     app.setWindowIcon(QtGui.QIcon("assets/icon.png"))
     app.setApplicationName("Team Daedalus AVR Gui")
@@ -409,7 +414,6 @@ def main() -> None:
     # create the main window
     w = MainWindow()
     w.build()
-    w.show()
 
     d = QtWidgets.QMenu(w)
     mqtt_action = QtGui.QAction("Disconnect")
@@ -425,6 +429,9 @@ def main() -> None:
     d.setAsDockMenu()
 
     w.main_connection_widget.mqtt_connection_widget.mqtt_client.message.connect(on_message)
+
+    w.show()
+    splash.finish(w)
 
     # run
     sys.exit(app.exec())
