@@ -97,6 +97,7 @@ class CameraViewWidget(BaseTabWidget):
         self.view = GraphicsLabel((16, 9))
         self.view.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.MinimumExpanding)
         self.view.sizePolicy().setHeightForWidth(True)
+        self.view.setPixmap(QtGui.QPixmap("assets/blank720.png"))
         self.update_signal.connect(self.update_image)
 
         viewer_layout.addWidget(self.view)
