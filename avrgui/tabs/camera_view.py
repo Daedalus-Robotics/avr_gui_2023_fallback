@@ -1,5 +1,6 @@
 import json
 import socket
+import time
 from threading import Thread
 
 import numpy as np
@@ -58,7 +59,7 @@ class CameraViewWidget(BaseTabWidget):
     streaming_changed = QtCore.Signal(bool)
     send_status_message = QtCore.Signal(str)
 
-    def __init__(self, parent: QtWidgets.QWidget, toast: Toast) -> None:
+    def __init__(self, parent: QtWidgets.QWidget) -> None:
         super().__init__(parent)
 
         # self.video_menu_cameras = {}
@@ -68,8 +69,6 @@ class CameraViewWidget(BaseTabWidget):
         self.video_menu_streaming = None
         self.video_menu = None
         self.shutting_down = False
-        self._disconnect_toast = None
-        self._connect_toast = None
         self.update_thread = None
         self.port_line_edit = None
         self.streaming_camera = None
@@ -81,7 +80,6 @@ class CameraViewWidget(BaseTabWidget):
         self.streaming_text = None
         self.model_text = None
         self.view = None
-        self.toast = toast
         self.auto_select = False
 
         self.setWindowTitle("Camera View")
@@ -207,7 +205,7 @@ class CameraViewWidget(BaseTabWidget):
         self.model_text.setText(f"Model: {model}")
 
     @staticmethod
-    def get_camera_name_from_index(index: int) -> str:
+    def get_camera_name_from_index(index: int) -> str | None:
         for name, info in CAMERAS.items():
             if info.get("index", -1) == index:
                 return name
@@ -281,13 +279,13 @@ class CameraViewWidget(BaseTabWidget):
                 if not self.shutting_down:
                     self.change_streaming.emit(False)
                 break
+            time.sleep(1 / 100)
         logger.debug("Disconnected socket")
         try:
             client_socket.shutdown(socket.SHUT_RDWR)
         except (OSError, TimeoutError):
             pass
         client_socket.close()
-        # self.send_disconnect_toast.emit()
 
     def process_message(self, topic: str, payload: str) -> None:
         if topic == "avr/camera/auto/select":
@@ -302,7 +300,8 @@ class CameraViewWidget(BaseTabWidget):
     def mqtt_connection_state(self, state: ConnectionState):
         if state == ConnectionState.connected:
             if not self.is_connected and self.set_streaming(True):
-                self.toast.show_message("Connected to frame server")
+                self.send_message("avr/gui/sound/beep", {})
+                Toast.get().send_message.emit("Connecting to frame server", 2)
             self.video_menu_auto.setEnabled(True)
         else:
             self.video_menu_auto.setEnabled(False)
