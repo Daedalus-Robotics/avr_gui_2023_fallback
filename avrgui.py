@@ -432,7 +432,7 @@ def main() -> None:
 
     kill_action = QtGui.QAction("Kill Motors")
     mqtt_action.triggered.connect(
-            w.main_connection_widget.mqtt_connection_widget.mqtt_client.publish(
+            lambda: w.main_connection_widget.mqtt_connection_widget.mqtt_client.publish(
                     "avr/kill", "", qos = 2
             )
     )
