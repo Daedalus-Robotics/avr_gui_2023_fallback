@@ -159,6 +159,8 @@ class MainWindow(QtWidgets.QWidget):
                 self.set_serial_connected_state
         )
 
+        self.menu_bar.addMenu(self.main_connection_widget.mqtt_connection_widget.mqtt_menu)
+
         # pcc tester widget
 
         self.pcc_tester_widget = PCCTesterWidget(
