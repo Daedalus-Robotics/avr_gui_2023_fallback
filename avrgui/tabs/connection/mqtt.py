@@ -128,6 +128,9 @@ class MQTTConnectionWidget(QtWidgets.QWidget):
     def __init__(self, parent: QtWidgets.QWidget) -> None:
         super().__init__(parent)
 
+        self.mqtt_menu_state = None
+        self.mqtt_menu_connect = None
+        self.mqtt_menu = None
         self.disconnect_button = None
         self.connect_button = None
         self.state_label = None
@@ -184,6 +187,46 @@ class MQTTConnectionWidget(QtWidgets.QWidget):
                 )
         )
         self.disconnect_button.clicked.connect(self.mqtt_client.logout)  # type: ignore
+
+        self.mqtt_menu = QtWidgets.QMenu("MQTT")
+
+        self.mqtt_menu_connect = QtGui.QAction("Connect")
+
+        def mqtt_menu_connect_triggered() -> None:
+            if self.mqtt_client.connection_state == ConnectionState.connected:
+                self.mqtt_client.logout()
+                self.mqtt_menu_connect.setChecked(False)
+            else:
+                try:
+                    port = int(self.port_line_edit.text())
+                except ValueError:
+                    return
+                self.mqtt_client.login(self.hostname_line_edit.text(), port)
+                self.mqtt_menu_connect.setChecked(True)
+
+        self.mqtt_menu_connect.triggered.connect(mqtt_menu_connect_triggered)
+        self.mqtt_menu_connect.setCheckable(True)
+        self.mqtt_menu.addAction(self.mqtt_menu_connect)
+
+        self.mqtt_menu_state = QtGui.QAction("Disconnected")
+        self.mqtt_menu_state.setEnabled(False)
+        self.mqtt_menu.addAction(self.mqtt_menu_state)
+
+        def mqtt_menu_state(state: ConnectionState) -> None:
+            if state == ConnectionState.connected:
+                self.mqtt_menu_connect.setChecked(True)
+                self.mqtt_menu_state.setText("Connected")
+            elif state == ConnectionState.disconnected:
+                self.mqtt_menu_connect.setChecked(False)
+                self.mqtt_menu_state.setText("Disconnected")
+            elif state == ConnectionState.connecting:
+                self.mqtt_menu_connect.setChecked(True)
+                self.mqtt_menu_state.setText("Connecting")
+            elif state == ConnectionState.disconnecting:
+                self.mqtt_menu_connect.setChecked(False)
+                self.mqtt_menu_state.setText("Disconnecting")
+
+        self.mqtt_client.connection_state.connect(mqtt_menu_state)
 
     def set_connected_state(self, connection_state: ConnectionState) -> None:
         """
