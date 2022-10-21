@@ -426,7 +426,7 @@ class ThermalViewControlWidget(BaseTabWidget):
         Process an incoming message and update the appropriate component
         """
         # discard topics we don't recognize
-        if topic != "avr/thermal/reading":
+        if topic != "avr/raw/thermal/reading":
             return
 
         success, frame = stream.decode_frame_uncompressed(payload)
