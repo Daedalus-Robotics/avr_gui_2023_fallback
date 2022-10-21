@@ -16,6 +16,7 @@ from bell.avr.mqtt.payloads import (
 
 from .base import BaseTabWidget
 from ..lib import stream
+from ..lib.graphics_label import GraphicsLabel
 
 
 def map_value(
@@ -86,9 +87,13 @@ class ThermalView(QtWidgets.QWidget):
         layout = QtWidgets.QVBoxLayout()
         self.setLayout(layout)
 
-        self.canvas = QtWidgets.QGraphicsScene()
-        self.view = QtWidgets.QGraphicsView(self.canvas)
-        self.view.setGeometry(0, 0, self.width_, self.height_)
+        # self.canvas = QtWidgets.QGraphicsScene()
+        # self.view = QtWidgets.QGraphicsView(self.canvas)
+        # self.view.setGeometry(0, 0, self.width_, self.height_)
+        self.view = GraphicsLabel((1, 1))
+        self.view.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.MinimumExpanding)
+        self.view.sizePolicy().setHeightForWidth(True)
+        self.view.setPixmap(QtGui.QPixmap("assets/blank_square.png"))
 
         layout.addWidget(self.view)
 
@@ -122,26 +127,27 @@ class ThermalView(QtWidgets.QWidget):
         # )
         # print(frame.shape)
         # print(frame)
-        self.check_size(frame.shape[0], frame.shape[1])
+        # self.check_size(frame.shape[0], frame.shape[1])
 
-        pen = QtGui.QPen(QtCore.Qt.NoPen)
-        self.canvas.clear()
-
-        y = 0
-        for row in frame:
-            x = 0
-            for pixel in row:
-                x += 1
-                brush = QtGui.QBrush(QtGui.QColor(pixel[2], pixel[1], pixel[0], 255))
-                self.canvas.addRect(
-                        self.pixel_width * x,
-                        self.pixel_height * y,
-                        self.pixel_width,
-                        self.pixel_height,
-                        pen,
-                        brush
-                )
-            y += 1
+        # pen = QtGui.QPen(QtCore.Qt.NoPen)
+        # self.canvas.clear()
+        #
+        # y = 0
+        # for row in frame:
+        #     x = 0
+        #     for pixel in row:
+        #         x += 1
+        #         brush = QtGui.QBrush(QtGui.QColor(pixel[2], pixel[1], pixel[0], 255))
+        #         self.canvas.addRect(
+        #                 self.pixel_width * x,
+        #                 self.pixel_height * y,
+        #                 self.pixel_width,
+        #                 self.pixel_height,
+        #                 pen,
+        #                 brush
+        #         )
+        #     y += 1
+        self.view.setPixmap(stream.convert_cv_qt(frame, (self.view.width(), self.view.height())))
 
 
 class JoystickWidget(BaseTabWidget):
@@ -295,7 +301,7 @@ class JoystickWidget(BaseTabWidget):
 
         # painter.drawEllipse(bounds)
         painter.drawRect(bounds)
-        painter.setBrush(QtCore.Qt.black)
+        painter.setBrush(QtCore.Qt.GlobalColor.black)
 
         painter.drawEllipse(self._center_ellipse())
 
@@ -428,4 +434,5 @@ class ThermalViewControlWidget(BaseTabWidget):
             self.viewer.update_canvas(frame)
 
     def clear(self) -> None:
-        self.viewer.canvas.clear()
+        # self.viewer.canvas.clear()
+        pass
