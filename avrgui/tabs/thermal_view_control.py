@@ -69,13 +69,13 @@ class ThermalView(QtWidgets.QWidget):
             (math.floor(ix / self.camera_x), (ix % self.camera_y))
             for ix in range(self.camera_total)
         ]
-        # i'm not fully sure what this does
+        # I'm not fully sure what this does
         self.grid_x, self.grid_y = np.mgrid[
                                    0: self.camera_x - 1: self.camera_total / 2j,
                                    0: self.camera_y - 1: self.camera_total / 2j,
                                    ]
 
-        # create avaiable colors
+        # create available colors
         self.colors = [
             (int(c.red * 255), int(c.green * 255), int(c.blue * 255))
             for c in list(
@@ -104,7 +104,7 @@ class ThermalView(QtWidgets.QWidget):
         self.MINTEMP = mintemp
         self.MAXTEMP = maxtemp
 
-    def set_calibrted_temp_range(self) -> None:
+    def set_calibrated_temp_range(self) -> None:
         self.MINTEMP = self.last_lowest_temp + 0.0
         self.MAXTEMP = self.last_lowest_temp + 15.0
 
@@ -166,10 +166,10 @@ class JoystickWidget(BaseTabWidget):
         self.current_y = 0
         self.current_x = 0
 
-        self.servoxmin = 0
-        self.servoymin = 0
-        self.servoxmax = 100
-        self.servoymax = 100
+        self.servo_x_min = 0
+        self.servo_y_min = 0
+        self.servo_x_max = 100
+        self.servo_y_max = 100
 
         # servo declarations
         self.SERVO_ABS_MAX = 2500
@@ -219,13 +219,13 @@ class JoystickWidget(BaseTabWidget):
         x_servo_percent = round(map_value(self.current_x, 0, 200, 0, 100))
         y_servo_percent = round(map_value(y_reversed, 0, 200, 0, 100))
 
-        if x_servo_percent < self.servoxmin:
+        if x_servo_percent < self.servo_x_min:
             return
-        if y_servo_percent < self.servoymin:
+        if y_servo_percent < self.servo_y_min:
             return
-        if x_servo_percent > self.servoxmax:
+        if x_servo_percent > self.servo_x_max:
             return
-        if y_servo_percent > self.servoymax:
+        if y_servo_percent > self.servo_y_max:
             return
 
         self.move_gimbal(x_servo_percent, y_servo_percent)
@@ -307,7 +307,7 @@ class JoystickWidget(BaseTabWidget):
 
     def mousePressEvent(self, event: QtGui.QMouseEvent) -> QtGui.QMouseEvent:
         """
-        On a mouse press, check if we've clicked on the center of the joystick.
+        On a mouse press, check if we've clicked in the center of the joystick.
         """
         self.grabCenter = self._center_ellipse().contains(event.pos())
         return event
