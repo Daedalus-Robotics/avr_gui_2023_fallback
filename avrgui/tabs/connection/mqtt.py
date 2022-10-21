@@ -50,11 +50,13 @@ class MQTTClient(QtCore.QObject):
         """
         Callback for every MQTT message
         """
-        self.message_bytes.emit(msg.topic, msg.payload)
-        try:
-            self.message.emit(msg.topic, msg.payload.decode("utf-8"))
-        except UnicodeDecodeError:
-            pass
+        if "avr/raw" in msg.topic:
+            self.message_bytes.emit(msg.topic, msg.payload)
+        else:
+            try:
+                self.message.emit(msg.topic, msg.payload.decode("utf-8"))
+            except UnicodeDecodeError:
+                pass
 
     def on_disconnect(self, client: mqtt.Client, userdata: Any, rc: int) -> None:
         """
