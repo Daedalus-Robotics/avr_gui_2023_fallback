@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from typing import Callable
 
+import colour
 from PySide6 import QtCore, QtWidgets
 from bell.avr.mqtt.payloads import (
     AvrFcmAttitudeEulerPayload,
@@ -18,15 +19,23 @@ from ..lib.color import smear_color, wrap_text
 from ..lib.toast import Toast
 from ..lib.widgets import DisplayLineEdit, StatusLabel
 
+BATTERY_COLORS: list[colour.Color] = colour.Color("green").range_to(colour.Color("red"), 101)
+
 
 class VMCTelemetryWidget(BaseTabWidget):
     # This widget provides a minimal QGroundControl-esque interface.
     # In our case, this operates over MQTT as all the relevant data
     # is already published there.
+    armed_state = QtCore.Signal(bool)
+    set_autonomous = QtCore.Signal(bool)
 
-    def __init__(self, parent: QtWidgets.QWidget) -> None:
+    def __init__(self, parent: QtWidgets.QWidget, controller) -> None:
         super().__init__(parent)
 
+        self.controller = controller
+
+        self.last_armed = False
+        self.armed = False
         self.satellites_label = None
         self.battery_percent_bar = None
         self.battery_voltage_label = None
@@ -51,7 +60,16 @@ class VMCTelemetryWidget(BaseTabWidget):
 
         self.main_shutdown_button = None
 
+        self.service_states = {}
+        self.battery_level = 0
+        self.autonomy_enabled = False
+
         self.setWindowTitle("VMC Telemetry")
+
+        def set_autonomy(state: bool):
+            self.autonomy_enabled = state
+
+        self.set_autonomous.connect(set_autonomy)
 
     def build(self) -> None:
         """
@@ -231,6 +249,7 @@ class VMCTelemetryWidget(BaseTabWidget):
         states_layout.addWidget(self.mavp2p_status_label, y, 0)
         states_layout.addWidget(restart_button, y, 1)
         self.service_map["mavp2p"] = self.mavp2p_status_label.set_health
+        self.service_states["mavp2p"] = False
 
         y += 1
 
@@ -241,6 +260,7 @@ class VMCTelemetryWidget(BaseTabWidget):
         states_layout.addWidget(self.fcm_status_label, y, 0)
         states_layout.addWidget(restart_button, y, 1)
         self.service_map["fcc"] = self.fcm_status_label.set_health
+        self.service_states["fcc"] = False
 
         y += 1
 
@@ -250,6 +270,7 @@ class VMCTelemetryWidget(BaseTabWidget):
         states_layout.addWidget(self.pcm_status_label, y, 0)
         states_layout.addWidget(restart_button, 2, 1)
         self.service_map["pcc"] = self.pcm_status_label.set_health
+        self.service_states["pcc"] = False
 
         y += 1
 
@@ -260,6 +281,7 @@ class VMCTelemetryWidget(BaseTabWidget):
         states_layout.addWidget(self.vmc_status_label, y, 0)
         states_layout.addWidget(restart_button, y, 1)
         self.service_map["vmc"] = self.vmc_status_label.set_health
+        self.service_states["vmc"] = False
 
         layout.addWidget(states_groupbox)
 
@@ -268,9 +290,35 @@ class VMCTelemetryWidget(BaseTabWidget):
 
         layout.addWidget(self.main_shutdown_button)
 
+    def set_controller_led(self, rgb: tuple[int, int, int]):
+        if self.controller is not None:
+            self.controller.ds.touchpad_r = rgb[0]
+            self.controller.ds.touchpad_g = rgb[1]
+            self.controller.ds.touchpad_b = rgb[2]
+
+    def update_controller_led(self) -> None:
+        checked_states = [
+            self.service_states.get("mavp2p", False),
+            self.service_states.get("pcc", False),
+            self.service_states.get("vmc", False)
+        ]
+        if False in checked_states:
+            self.set_controller_led((255, 0, 0))
+        elif self.autonomy_enabled and self.battery_level > 20:
+            self.set_controller_led((255, 220, 0))
+        else:
+            # noinspection PyBroadException
+            try:
+                color = BATTERY_COLORS[self.battery_level]
+                self.set_controller_led(color.rgb)
+            except Exception:
+                self.set_controller_led((100, 0, 255))
+
     def update_service_status(self, payload: dict[str, bool]) -> None:
         for name, state in payload.items():
             if name in self.service_map:
+                self.service_states[name] = state
+                self.update_controller_led()
                 self.service_map[name](state)
                 if not state:
                     if name == "mavp2p":
@@ -355,6 +403,9 @@ class VMCTelemetryWidget(BaseTabWidget):
         # prevent it from going above 100
         soc = min(soc, 100)
 
+        self.battery_level = soc
+        self.update_controller_led()
+
         if soc < 20:
             self.send_message("avr/gui/sound/battery_alert", {})
             Toast.get().send_message.emit("Low battery!", 3.0)
@@ -384,12 +435,17 @@ class VMCTelemetryWidget(BaseTabWidget):
         """
         Update status information
         """
+        self.last_armed = self.armed
         if payload["armed"]:
             color = "Red"
             text = "Armed"
+            self.armed = True
         else:
             color = "Green"
             text = "Disarmed"
+            self.armed = False
+        if self.armed is not self.last_armed:
+            self.armed_state.emit(self.armed)
 
         self.armed_label.setText(wrap_text(text, color))
         self.flight_mode_label.setText(payload["mode"])

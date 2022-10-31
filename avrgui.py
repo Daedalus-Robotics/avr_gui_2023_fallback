@@ -1,4 +1,5 @@
 import argparse
+import json
 import os.path
 import sys
 
@@ -23,6 +24,15 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from avrgui.tabs.water_drop import WaterDropWidget
 
+try:
+    from avrgui.lib.controller.controller import Controller
+
+    controller = Controller()
+except ImportError as e:
+    print(e)
+    Controller = None
+    controller = None
+
 
 class TabBar(QtWidgets.QTabBar):
     """
@@ -32,7 +42,7 @@ class TabBar(QtWidgets.QTabBar):
 
     pop_out: QtCore.SignalInstance = QtCore.Signal(int)  # type: ignore
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
         self.tabBarDoubleClicked.connect(self.pop_out)  # type: ignore
@@ -55,7 +65,7 @@ class TabWidget(QtWidgets.QTabWidget):
     Custom QTabWidget that allows the tab to be popped in/out from an external window.
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
         self.tab_bar = TabBar(self)
@@ -104,6 +114,23 @@ class MainWindow(QtWidgets.QWidget):
     """
     This is the main application class.
     """
+
+    controller_circle = QtCore.Signal(bool)
+    controller_cross = QtCore.Signal(bool)
+    controller_triangle = QtCore.Signal(bool)
+    controller_square = QtCore.Signal(bool)
+    controller_lb = QtCore.Signal(bool)
+    controller_rb = QtCore.Signal(bool)
+    controller_lt = QtCore.Signal(int)
+    controller_rt = QtCore.Signal()
+    controller_ps = QtCore.Signal()
+    controller_l = QtCore.Signal(tuple)
+    controller_r = QtCore.Signal(tuple)
+    controller_touchBtn = QtCore.Signal()
+    controller_dpad = QtCore.Signal(int)
+    controller_l_press = QtCore.Signal()
+    controller_r_press = QtCore.Signal()
+
     def __init__(self) -> None:
         super().__init__()
 
@@ -197,7 +224,7 @@ class MainWindow(QtWidgets.QWidget):
 
         # vmc telemetry widget
 
-        self.vmc_telemetry_widget = VMCTelemetryWidget(self)
+        self.vmc_telemetry_widget = VMCTelemetryWidget(self, controller)
         self.vmc_telemetry_widget.build()
         self.vmc_telemetry_widget.pop_in.connect(self.tabs.pop_in)
         self.tabs.addTab(
@@ -210,6 +237,18 @@ class MainWindow(QtWidgets.QWidget):
 
         self.vmc_telemetry_widget.emit_message.connect(
                 self.main_connection_widget.mqtt_connection_widget.mqtt_client.publish
+        )
+
+        self.vmc_telemetry_widget.armed_state.connect(
+                controller.ds.set_mic_led
+        )
+
+        self.controller_ps.connect(
+                lambda: self.main_connection_widget.mqtt_connection_widget.mqtt_client.publish(
+                        "avr/shutdown",
+                        "",
+                        qos = 2
+                )
         )
 
         # vmc control widget
@@ -239,6 +278,26 @@ class MainWindow(QtWidgets.QWidget):
 
         self.thermal_view_control_widget.emit_message.connect(
                 self.main_connection_widget.mqtt_connection_widget.mqtt_client.publish
+        )
+
+        self.controller_r.connect(
+                self.thermal_view_control_widget.on_controller_r
+        )
+
+        self.controller_rt.connect(
+                self.thermal_view_control_widget.on_controller_rt
+        )
+
+        self.controller_rb.connect(
+                self.thermal_view_control_widget.on_controller_rb
+        )
+
+        self.controller_circle.connect(
+                self.thermal_view_control_widget.on_controller_circle
+        )
+
+        self.controller_r_press.connect(
+                self.thermal_view_control_widget.on_controller_r3
         )
 
         # camera view widget
@@ -281,6 +340,10 @@ class MainWindow(QtWidgets.QWidget):
 
         self.water_drop_widget.emit_message.connect(
                 self.main_connection_widget.mqtt_connection_widget.mqtt_client.publish
+        )
+
+        self.controller_lt.connect(
+                self.water_drop_widget.set_bpu
         )
 
         # moving map widget
@@ -392,6 +455,8 @@ class MainWindow(QtWidgets.QWidget):
 
         event.accept()
 
+        controller.ds.device.close()
+
 
 def on_message(topic: str, payload: dict) -> None:
     if "avr/gui/sound/" in topic:
@@ -414,7 +479,45 @@ def main() -> None:
 
     # create the main window
     w = MainWindow()
+
+    if controller is not None:
+        controller.on_circle = w.controller_circle.emit
+        controller.on_cross = w.controller_cross.emit
+        controller.on_triangle = w.controller_triangle.emit
+        controller.on_square = w.controller_square.emit
+        controller.on_lb = w.controller_lb.emit
+        controller.on_rb = w.controller_rb.emit
+        controller.on_lt = w.controller_lt.emit
+        controller.on_rt = w.controller_rt.emit
+        controller.on_ps = w.controller_ps.emit
+        controller.on_l = w.controller_l.emit
+        controller.on_r = w.controller_r.emit
+        controller.on_touchBtn = w.controller_touchBtn.emit
+        controller.on_dpad = w.controller_dpad.emit
+        controller.on_L3 = w.controller_l_press.emit
+        controller.on_R3 = w.controller_r_press.emit
+
     w.build()
+
+    if controller is not None:
+        def set_player_led(state: ConnectionState) -> None:
+            if state == ConnectionState.connected:
+                controller.ds.playerNumber = 21
+            elif state == ConnectionState.connecting:
+                controller.ds.playerNumber = 10
+            elif state == ConnectionState.disconnecting:
+                controller.ds.playerNumber = 31
+            else:
+                controller.ds.playerNumber = 0
+
+        w.main_connection_widget.mqtt_connection_widget.connection_state.connect(set_player_led)
+
+        w.controller_touchBtn.connect(
+                lambda: w.main_connection_widget.mqtt_connection_widget.mqtt_client.publish(
+                        "avr/autonomy/stop",
+                        ""
+                )
+        )
 
     d = QtWidgets.QMenu(w)
     mqtt_action = QtGui.QAction("MQTT Disconnected")
@@ -443,6 +546,12 @@ def main() -> None:
             )
     )
     d.addAction(kill_action)
+
+    controller_action = QtGui.QAction("Connect Controller")
+    controller_action.triggered.connect(
+            lambda: controller.ds.open()
+    )
+    d.addAction(controller_action)
 
     d.setAsDockMenu()
 

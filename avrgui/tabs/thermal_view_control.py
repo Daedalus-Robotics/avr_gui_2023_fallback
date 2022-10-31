@@ -1,7 +1,8 @@
+import json
 import math
 import time
 from enum import Enum, auto
-from typing import Optional
+from typing import Any
 
 import colour
 import numpy as np
@@ -23,6 +24,14 @@ def map_value(
         x: float, in_min: float, in_max: float, out_min: float, out_max: float
 ) -> float:
     return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min
+
+
+def deadzone(value: float | int, min_value: float | int) -> float | int:
+    number_type = type(value)
+    if min_value <= value <= -min_value:
+        return number_type(0)
+    else:
+        return value
 
 
 class Direction(Enum):
@@ -151,14 +160,17 @@ class ThermalView(QtWidgets.QWidget):
 
 
 class JoystickWidget(BaseTabWidget):
-    def __init__(self, parent: QtWidgets.QWidget) -> None:
+    def __init__(self, parent: QtWidgets.QWidget, controller_checkbox: QtWidgets.QCheckBox) -> None:
         super().__init__(parent)
 
+        self.controller_checkbox = controller_checkbox
         self.setFixedSize(300, 300)
 
         self.movingOffset = QtCore.QPointF(0, 0)
 
         self.grabCenter = False
+        self.controller_enabled = False
+        self.relative_movement = False
         self.__maxDistance = 100
 
         self.last_time = 0
@@ -178,147 +190,116 @@ class JoystickWidget(BaseTabWidget):
     def process_message(self, topic: str, payload: str) -> None:
         pass
 
-    def _center(self) -> QtCore.QPointF:
-        """
-        Return the center of the widget.
-        """
-        return QtCore.QPointF(self.width() / 2, self.height() / 2)
-
-    def move_gimbal(self, x_servo_percent: int, y_servo_percent: int) -> None:
+    def move_gimbal(self, x_servo: int, y_servo: int) -> None:
+        # self.send_message(
+        #         "avr/pcm/set_servo_pct",
+        #         AvrPcmSetServoPctPayload(servo = 2, percent = x_servo_percent),
+        # )
+        # self.send_message(
+        #         "avr/pcm/set_servo_pct",
+        #         AvrPcmSetServoPctPayload(servo = 3, percent = y_servo_percent),
+        # )
         self.send_message(
-                "avr/pcm/set_servo_pct",
-                AvrPcmSetServoPctPayload(servo = 2, percent = x_servo_percent),
-        )
-        self.send_message(
-                "avr/pcm/set_servo_pct",
-                AvrPcmSetServoPctPayload(servo = 3, percent = y_servo_percent),
-        )
-
-    def move_gimbal_absolute(self, x_servo_abs: int, y_servo_abs: int) -> None:
-        self.send_message(
-                "avr/pcm/set_servo_abs",
-                AvrPcmSetServoAbsPayload(servo = 2, absolute = x_servo_abs),
-        )
-        self.send_message(
-                "avr/pcm/set_servo_abs",
-                AvrPcmSetServoAbsPayload(servo = 3, absolute = y_servo_abs),
+                "avr/gimbal/pos",
+                {
+                    "x": x_servo,
+                    "y": y_servo
+                }
         )
 
     def update_servos(self) -> None:
         """
         Update the servos on joystick movement.
         """
-        ms = int(round(time.time() * 1000))
-        timesince = ms - self.last_time
-        if timesince < 50:
-            return
-        self.last_time = ms
+        if not self.relative_movement:
+            ms = int(round(time.time() * 1000))
+            timesince = ms - self.last_time
+            if timesince < 100:
+                return
+            self.last_time = ms
 
-        y_reversed = 100 - self.current_y
+            # y_reversed = 100 - self.current_y
+            y_reversed = self.current_y
 
-        x_servo_percent = round(map_value(self.current_x, 0, 200, 0, 100))
-        y_servo_percent = round(map_value(y_reversed, 0, 200, 0, 100))
+            x_servo_pos = round(map_value(self.current_x, 0, 200, 0, 180))
+            y_servo_pos = round(map_value(y_reversed, 0, 200, 0, 180))
 
-        if x_servo_percent < self.servo_x_min:
-            return
-        if y_servo_percent < self.servo_y_min:
-            return
-        if x_servo_percent > self.servo_x_max:
-            return
-        if y_servo_percent > self.servo_y_max:
-            return
+            if not 0 <= x_servo_pos <= 180:
+                return
+            if not 0 <= y_servo_pos <= 180:
+                return
 
-        self.move_gimbal(x_servo_percent, y_servo_percent)
+            self.move_gimbal(x_servo_pos, y_servo_pos)
+        else:
+            ms = int(round(time.time() * 1000))
+            timesince = ms - self.last_time
+            if timesince < 100:
+                return
+            self.last_time = ms
 
-        # y_reversed = 225 - self.current_y
-        # # side to side  270 left, 360 right
-        #
-        # x_servo_abs = round(
-        #         map_value(
-        #                 self.current_x + 25, 225, 25, self.SERVO_ABS_MIN, self.SERVO_ABS_MAX
-        #         )
-        # )
-        # y_servo_abs = round(
-        #         map_value(y_reversed, 225, 25, self.SERVO_ABS_MIN, self.SERVO_ABS_MAX)
-        # )
-        #
-        # self.move_gimbal_absolute(x_servo_abs, y_servo_abs)
+            x = deadzone(map_value(self.current_x, 0, 200, -100, 100), 10)
+            y = deadzone(map_value(self.current_y, 0, 200, -100, 100), 10)
+
+            x = int(map_value(x, -100, 100, -20, 20))
+            y = int(map_value(y, -100, 100, -10, 10))
+            self.send_message("avr/gimbal/move", json.dumps({"x": x, "y": y}))
+
+    def paintEvent(self, event) -> None:
+        painter = QtGui.QPainter(self)
+        bounds = QtCore.QRectF(
+                -self.__maxDistance,
+                -self.__maxDistance,
+                self.__maxDistance * 2,
+                self.__maxDistance * 2
+        ).translated(self._center())
+        painter.drawEllipse(bounds)
+        painter.setBrush(QtCore.Qt.GlobalColor.black)
+        painter.drawEllipse(self._center_ellipse())
 
     def _center_ellipse(self) -> QtCore.QRectF:
-        # sourcery skip: assign-if-exp
-        if self.grabCenter:
-            center = self.movingOffset
-        else:
-            center = self._center()
+        if self.grabCenter or self.controller_enabled:
+            return QtCore.QRectF(-20, -20, 40, 40).translated(self.movingOffset)
+        return QtCore.QRectF(-20, -20, 40, 40).translated(self._center())
 
-        return QtCore.QRectF(-20, -20, 40, 40).translated(center)
+    def _center(self) -> QtCore.QPointF:
+        return QtCore.QPointF(self.width() / 2, self.height() / 2)
 
-    def _bound_joystick(self, point: QtCore.QPoint) -> QtCore.QPoint:
-        """
-        If the joystick is leaving the widget, bound it to the edge of the widget.
-        """
-        if point.x() > (self._center().x() + self.__maxDistance):
-            point.setX(int(self._center().x() + self.__maxDistance))
-        elif point.x() < (self._center().x() - self.__maxDistance):
-            point.setX(int(self._center().x() - self.__maxDistance))
+    def _bound_joystick(self, point) -> QtCore.QPointF:
+        limit_line = QtCore.QLineF(self._center(), point)
+        if limit_line.length() > self.__maxDistance:
+            limit_line.setLength(self.__maxDistance)
+        return limit_line.p2()
 
-        if point.y() > (self._center().y() + self.__maxDistance):
-            point.setY(int(self._center().y() + self.__maxDistance))
-        elif point.y() < (self._center().y() - self.__maxDistance):
-            point.setY(int(self._center().y() - self.__maxDistance))
-        return point
-
-    def joystick_direction(self) -> Optional[tuple[Direction, float]]:
-        """
-        Retrieve the direction the joystick is moving
-        """
-        if not self.grabCenter:
-            return None
-
+    def joystick_direction(self) -> tuple[Direction, float]:
+        if not self.grabCenter and not self.controller_enabled:
+            return 0
         norm_vector = QtCore.QLineF(self._center(), self.movingOffset)
         current_distance = norm_vector.length()
         angle = norm_vector.angle()
 
         distance = min(current_distance / self.__maxDistance, 1.0)
-
         if 45 <= angle < 135:
             return Direction.Up, distance
         elif 135 <= angle < 225:
             return Direction.Left, distance
         elif 225 <= angle < 315:
             return Direction.Down, distance
-
         return Direction.Right, distance
 
-    def paintEvent(self, event: QtGui.QPaintEvent) -> None:
-        painter = QtGui.QPainter(self)
-        bounds = QtCore.QRectF(
-                -self.__maxDistance,
-                -self.__maxDistance,
-                self.__maxDistance * 2,
-                self.__maxDistance * 2,
-        ).translated(self._center())
+    def mousePressEvent(self, ev) -> Any:
+        self.grabCenter = self._center_ellipse().contains(ev.pos())
+        if self.grabCenter:
+            self.controller_checkbox.setChecked(False)
+            self.controller_enabled = False
+        return super().mousePressEvent(ev)
 
-        # painter.drawEllipse(bounds)
-        painter.drawRect(bounds)
-        painter.setBrush(QtCore.Qt.GlobalColor.black)
-
-        painter.drawEllipse(self._center_ellipse())
-
-    def mousePressEvent(self, event: QtGui.QMouseEvent) -> QtGui.QMouseEvent:
-        """
-        On a mouse press, check if we've clicked in the center of the joystick.
-        """
-        self.grabCenter = self._center_ellipse().contains(event.pos())
-        return event
-
-    def mouseReleaseEvent(self, event: QtCore.QEvent) -> None:
-        # self.grabCenter = False
-        # self.movingOffset = QtCore.QPointF(0, 0)
+    def mouseReleaseEvent(self, event) -> Any:
+        self.grabCenter = False
+        self.movingOffset = QtCore.QPointF(0, 0)
         self.update()
 
-    def mouseMoveEvent(self, event: QtGui.QMouseEvent) -> None:
-        if self.grabCenter:
+    def mouseMoveEvent(self, event) -> Any:
+        if self.grabCenter or self.controller_enabled:
             self.movingOffset = self._bound_joystick(event.pos())
             self.update()
 
@@ -329,11 +310,32 @@ class JoystickWidget(BaseTabWidget):
     def center_gimbal(self) -> None:
         self.move_gimbal(50, 50)
 
+    def set_pos(self, x: float, y: float) -> None:
+        if self.controller_enabled:
+            self.movingOffset = self._bound_joystick(
+                    QtCore.QPoint(
+                            int(
+                                    x + self._center().x() - self.__maxDistance
+                            ),
+                            int(
+                                    y + self._center().y() - self.__maxDistance
+                            )
+                    )
+            )
+            self.update()
+
+            self.current_x = self.movingOffset.x() - self._center().x() + self.__maxDistance
+            self.current_y = self.movingOffset.y() - self._center().y() + self.__maxDistance
+            self.update_servos()
+
 
 class ThermalViewControlWidget(BaseTabWidget):
     def __init__(self, parent: QtWidgets.QWidget) -> None:
         super().__init__(parent)
 
+        self.relative_checkbox = None
+        self.auto_checkbox = None
+        self.last_fire = 0
         self.joystick = None
         self.viewer = None
         self.streaming_checkbox = None
@@ -375,8 +377,27 @@ class ThermalViewControlWidget(BaseTabWidget):
         sub_joystick_layout = QtWidgets.QHBoxLayout()
         joystick_layout.addLayout(sub_joystick_layout)
 
-        self.joystick = JoystickWidget(self)
+        controller_enable_checkbox = QtWidgets.QCheckBox("Enable Controller")
+
+        self.joystick = JoystickWidget(self, controller_enable_checkbox)
         sub_joystick_layout.addWidget(self.joystick)
+
+        controller_enable_checkbox.stateChanged.connect(
+                lambda state: self.set_controller(state > 0)
+        )
+        joystick_layout.addWidget(controller_enable_checkbox)
+
+        self.relative_checkbox = QtWidgets.QCheckBox("Relative Movement")
+        self.relative_checkbox.stateChanged.connect(
+                lambda state: self.set_rel(state > 0)
+        )
+        joystick_layout.addWidget(self.relative_checkbox)
+
+        self.auto_checkbox = QtWidgets.QCheckBox("Enable Auto Aim")
+        self.auto_checkbox.stateChanged.connect(
+                lambda state: self.set_auto(state > 0)
+        )
+        joystick_layout.addWidget(self.auto_checkbox)
 
         center_gimbal_button = QtWidgets.QPushButton("Center Gimbal")
         joystick_layout.addWidget(center_gimbal_button)
@@ -403,9 +424,9 @@ class ThermalViewControlWidget(BaseTabWidget):
                 lambda: self.send_message("avr/pcm/fire_laser", AvrPcmFireLaserPayload())
         )
 
-        center_gimbal_button.clicked.connect(
-                lambda: self.joystick.center_gimbal()
-        )
+        # center_gimbal_button.clicked.connect(
+        #         lambda: self.gim
+        # )
 
         laser_on_button.clicked.connect(
                 lambda: self.send_message("avr/pcm/set_laser_on", AvrPcmSetLaserOnPayload())
@@ -418,6 +439,15 @@ class ThermalViewControlWidget(BaseTabWidget):
         # don't allow us to shrink below size hint
         self.setMinimumSize(self.sizeHint())
 
+    def set_controller(self, enabled: bool) -> None:
+        self.joystick.controller_enabled = enabled
+
+    def set_auto(self, enabled: bool) -> None:
+        self.send_message("avr/gimbal/auto_aim", json.dumps({"enabled": enabled}))
+
+    def set_rel(self, state: bool) -> None:
+        self.joystick.relative_movement = state
+
     def process_message(self, topic: str, payload: str) -> None:
         pass
 
@@ -429,9 +459,35 @@ class ThermalViewControlWidget(BaseTabWidget):
         if topic != "avr/raw/thermal/reading":
             return
 
-        success, frame = stream.decode_frame_uncompressed(payload)
+        success, frame = stream.decode_frame(payload)
         if success:
             self.viewer.update_canvas(frame)
+
+    def on_controller_r(self, pos: tuple[float, float]) -> None:
+        x = deadzone(pos[0], 20)
+        y = deadzone(pos[1], 20)
+        self.joystick.set_pos(
+                map_value(x, -130, 130, 0, 200),
+                map_value(y, -130, 130, 0, 200)
+        )
+
+    def on_controller_rt(self) -> None:
+        ms = int(round(time.time() * 1000))
+        timesince = ms - self.last_fire
+        if timesince < 100:
+            return
+        self.last_fire = ms
+
+        self.send_message("avr/pcm/fire_laser", AvrPcmFireLaserPayload())
+
+    def on_controller_rb(self, state: bool) -> None:
+        self.send_message("avr/gimbal/fire-ready", {"state": state})
+
+    def on_controller_circle(self, state: bool) -> None:
+        self.auto_checkbox.setChecked(state)
+
+    def on_controller_r3(self) -> None:
+        self.relative_checkbox.setChecked(not self.joystick.relative_movement)
 
     def clear(self) -> None:
         # self.viewer.canvas.clear()

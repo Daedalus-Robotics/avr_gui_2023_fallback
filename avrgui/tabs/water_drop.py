@@ -1,16 +1,23 @@
-from PySide6 import QtWidgets
+from PySide6 import QtCore, QtWidgets
 
 from avrgui.lib.graphics_view import GraphicsView
 from avrgui.tabs.base import BaseTabWidget
+
+def map_value(
+        x: float, in_min: float, in_max: float, out_min: float, out_max: float
+) -> float:
+    return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min
 
 
 class WaterDropWidget(BaseTabWidget):
     def __init__(self, parent: QtWidgets.QWidget) -> None:
         super().__init__(parent)
 
+        self.position_slider: QtWidgets.QSlider | None = None
+        self.controller_enabled_checkbox = None
+        self.controller_enabled = False
         self.canvas = None
         self.view = None
-        self.streaming_button = None
 
         self.is_streaming = False
 
@@ -46,9 +53,20 @@ class WaterDropWidget(BaseTabWidget):
         controls_groupbox.setFixedWidth(350)
         controls_groupbox.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Expanding)
 
-        self.streaming_button = QtWidgets.QPushButton("Start Streaming")
-        self.streaming_button.clicked.connect(self.toggle_streaming)
-        controls_layout.addWidget(self.streaming_button)
+        self.position_slider = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
+        # self.position_slider.setTickPosition(QtWidgets.QSlider.TickPosition.TicksBothSides)
+        self.position_slider.setRange(0, 100)
+        self.position_slider.setFixedWidth(250)
+        self.position_slider.sliderMoved.connect(
+                self.set_bpu_slider
+        )
+        controls_layout.addWidget(self.position_slider)
+
+        self.controller_enabled_checkbox = QtWidgets.QCheckBox("Enable Controller")
+        self.controller_enabled_checkbox.stateChanged.connect(
+                self.set_controller
+        )
+        controls_layout.addWidget(self.controller_enabled_checkbox)
 
         layout.addWidget(controls_groupbox, 0, 1, 0, 1)  # These cords don't make any sense to me, but they work
 
@@ -62,17 +80,23 @@ class WaterDropWidget(BaseTabWidget):
 
         layout.addWidget(loading_groupbox, 1, 0)
 
-    def toggle_streaming(self):
-        self.is_streaming = not self.is_streaming
-        if self.is_streaming:
-            self.streaming_button.setText("Stop Streaming")
-            # start streaming
-        else:
-            self.streaming_button.setText("Start Streaming")
-            # stop streaming
+    def set_controller(self, state: bool) -> None:
+        self.controller_enabled = state
+        self.position_slider.setEnabled(not state)
 
     def process_message(self, topic: str, payload: str) -> None:
         pass
 
     def clear(self) -> None:
         pass
+
+    def set_bpu_slider(self, percent: int) -> None:
+        if not self.controller_enabled:
+            print(percent)
+            self.send_message("avr/pcm/set_servo_pct", {"servo": 1, "percent": percent})
+
+    def set_bpu(self, value: int) -> None:
+        if self.controller_enabled:
+            percent = int(map_value(value, 0, 255, 0, 100))
+            self.send_message("avr/pcm/set_servo_pct", {"servo": 1, "percent": percent})
+            self.position_slider.setValue(value)
