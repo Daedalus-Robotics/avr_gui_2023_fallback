@@ -255,7 +255,7 @@ class VMCTelemetryWidget(BaseTabWidget):
 
         self.fcm_status_label = StatusLabel("Flight Controller")
         restart_button = QtWidgets.QPushButton("Restart")
-        fcm_restart_message = "This will restart the flight controller.\nIf the avr drone is currently flying, it will fall."
+        fcm_restart_message = "This will restart the flight controller.If the drone is currently flying, it will fall."
         restart_button.clicked.connect(lambda: self.restart_service("fcc", True, fcm_restart_message))
         states_layout.addWidget(self.fcm_status_label, y, 0)
         states_layout.addWidget(restart_button, y, 1)
@@ -276,7 +276,8 @@ class VMCTelemetryWidget(BaseTabWidget):
 
         self.vmc_status_label = StatusLabel("Vehicle Management")
         restart_button = QtWidgets.QPushButton("Restart")
-        vmc_restart_message = "This will restart the vehicle management computer.\nThis will disable all autonomy for at least a minute."
+        vmc_restart_message = """This will restart the vehicle management computer.
+        This will disable all autonomy for at least a minute."""
         restart_button.clicked.connect(lambda: self.restart_service("vmc", True, vmc_restart_message))
         states_layout.addWidget(self.vmc_status_label, y, 0)
         states_layout.addWidget(restart_button, y, 1)
