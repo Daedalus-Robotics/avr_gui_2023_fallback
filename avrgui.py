@@ -3,6 +3,8 @@ import json
 import os.path
 import sys
 
+from PySide6 import QtCore, QtGui, QtWidgets
+from loguru import logger
 from playsound import playsound
 
 from avrgui.lib.enums import ConnectionState
@@ -19,9 +21,6 @@ from avrgui.tabs.pcc_tester import PCCTesterWidget
 from avrgui.tabs.thermal_view_control import ThermalViewControlWidget
 # from avrgui.tabs.vmc_control import VMCControlWidget
 from avrgui.tabs.vmc_telemetry import VMCTelemetryWidget
-from loguru import logger
-from PySide6 import QtCore, QtGui, QtWidgets
-
 from avrgui.tabs.water_drop import WaterDropWidget
 
 try:
