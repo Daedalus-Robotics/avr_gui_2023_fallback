@@ -244,10 +244,12 @@ class MainWindow(QtWidgets.QWidget):
         )
 
         self.controller_ps.connect(
-                lambda: self.main_connection_widget.mqtt_connection_widget.mqtt_client.publish(
-                        "avr/shutdown",
-                        "",
-                        qos = 2
+                lambda: self.vmc_telemetry_widget.restart_service(
+                        None,
+                        True,
+                        """This will shutdown the vehicle management computer.
+                        This means that you have to unplug it and re plug it to restart it again.""",
+                        lambda: self.vmc_telemetry_widget.send_message("avr/shutdown", "", qos = 2)
                 )
         )
 

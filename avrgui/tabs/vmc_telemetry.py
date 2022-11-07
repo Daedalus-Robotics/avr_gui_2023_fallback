@@ -286,7 +286,15 @@ class VMCTelemetryWidget(BaseTabWidget):
         layout.addWidget(states_groupbox)
 
         self.main_shutdown_button = QtWidgets.QPushButton("Shutdown")
-        self.main_shutdown_button.clicked.connect(lambda: self.send_message("avr/shutdown", "", qos = 2))
+        self.main_shutdown_button.clicked.connect(
+                lambda: self.restart_service(
+                        None,
+                        True,
+                        """This will shutdown the vehicle management computer.
+                        This means that you have to unplug it and re plug it to restart it again.""",
+                        lambda: self.send_message("avr/shutdown", "", qos = 2)
+                )
+        )
 
         layout.addWidget(self.main_shutdown_button)
 
