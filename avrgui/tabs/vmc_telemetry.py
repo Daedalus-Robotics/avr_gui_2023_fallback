@@ -298,6 +298,9 @@ class VMCTelemetryWidget(BaseTabWidget):
 
         layout.addWidget(self.main_shutdown_button)
 
+    def toggle_arm(self) -> None:
+        self.send_message("avr/arm", {"arm": not self.armed})
+
     def set_controller_led(self, rgb: tuple[int, int, int]):
         if self.controller is not None:
             self.controller.ds.touchpad_r = rgb[0]
