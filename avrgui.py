@@ -256,6 +256,10 @@ class MainWindow(QtWidgets.QWidget):
                 )
         )
 
+        self.controller_mic.connect(
+                lambda: self.vmc_telemetry_widget.toggle_arm()
+        )
+
         # vmc control widget
 
         # self.vmc_control_widget = VMCControlWidget(self)
