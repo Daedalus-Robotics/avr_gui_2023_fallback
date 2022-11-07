@@ -303,9 +303,7 @@ class VMCTelemetryWidget(BaseTabWidget):
 
     def set_controller_led(self, rgb: tuple[int, int, int]):
         if self.controller is not None:
-            self.controller.ds.touchpad_r = rgb[0]
-            self.controller.ds.touchpad_g = rgb[1]
-            self.controller.ds.touchpad_b = rgb[2]
+            self.controller.touchpad.led_color = rgb
 
     def update_controller_led(self) -> None:
         checked_states = [
