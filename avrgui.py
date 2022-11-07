@@ -240,9 +240,13 @@ class MainWindow(QtWidgets.QWidget):
                 self.main_connection_widget.mqtt_connection_widget.mqtt_client.publish
         )
 
-        self.vmc_telemetry_widget.armed_state.connect(
-                controller.ds.set_mic_led
-        )
+        if controller is not None:
+            def set_mic_led(state: bool):
+                controller.mic_button.led_state = state
+
+            self.vmc_telemetry_widget.armed_state.connect(
+                    set_mic_led
+            )
 
         self.controller_ps.connect(
                 lambda: self.vmc_telemetry_widget.restart_service(
@@ -458,7 +462,7 @@ class MainWindow(QtWidgets.QWidget):
 
         event.accept()
 
-        controller.ds.device.close()
+        controller.close()
 
 
 def on_message(topic: str, payload: dict) -> None:
