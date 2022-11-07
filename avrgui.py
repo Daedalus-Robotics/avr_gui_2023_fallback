@@ -27,7 +27,7 @@ from avrgui.tabs.water_drop import WaterDropWidget
 try:
     from avrgui.lib.controller.controller import Controller
 
-    controller = Controller()
+    controller: Controller | None = Controller()
 except ImportError as e:
     print(e)
     Controller = None
@@ -130,6 +130,7 @@ class MainWindow(QtWidgets.QWidget):
     controller_dpad = QtCore.Signal(int)
     controller_l_press = QtCore.Signal()
     controller_r_press = QtCore.Signal()
+    controller_mic = QtCore.Signal()
 
     def __init__(self) -> None:
         super().__init__()
@@ -483,34 +484,35 @@ def main() -> None:
     w = MainWindow()
 
     if controller is not None:
-        controller.on_circle = w.controller_circle.emit
-        controller.on_cross = w.controller_cross.emit
-        controller.on_triangle = w.controller_triangle.emit
-        controller.on_square = w.controller_square.emit
-        controller.on_lb = w.controller_lb.emit
-        controller.on_rb = w.controller_rb.emit
-        controller.on_lt = w.controller_lt.emit
-        controller.on_rt = w.controller_rt.emit
-        controller.on_ps = w.controller_ps.emit
-        controller.on_l = w.controller_l.emit
-        controller.on_r = w.controller_r.emit
-        controller.on_touchBtn = w.controller_touchBtn.emit
-        controller.on_dpad = w.controller_dpad.emit
-        controller.on_L3 = w.controller_l_press.emit
-        controller.on_R3 = w.controller_r_press.emit
+        controller.circle.on_state.register(w.controller_circle.emit)
+        controller.cross.on_state.register(w.controller_cross.emit)
+        controller.triangle.on_state.register(w.controller_triangle.emit)
+        controller.square.on_state.register(w.controller_square.emit)
+        controller.left_bumper.on_state.register(w.controller_lb.emit)
+        controller.right_bumper.on_state.register(w.controller_rb.emit)
+        controller.left_trigger.on_pos.register(w.controller_lt.emit)
+        controller.right_trigger.on_press.register(w.controller_rt.emit)
+        controller.ps.on_press.register(w.controller_ps.emit)
+        controller.left_stick.on_move.register(w.controller_l.emit)
+        controller.right_stick.on_move.register(w.controller_r.emit)
+        controller.touchpad.on_press.register(w.controller_touchBtn.emit)
+        controller.dpad.on_direction.register(w.controller_dpad.emit)
+        controller.left_stick.on_press.register(w.controller_l_press.emit)
+        controller.right_stick.on_press.register(w.controller_r_press.emit)
+        controller.mic_button.on_press.register(w.controller_mic.emit)
 
     w.build()
 
     if controller is not None:
         def set_player_led(state: ConnectionState) -> None:
             if state == ConnectionState.connected:
-                controller.ds.playerNumber = 21
+                controller.player_led.player_num = 3
             elif state == ConnectionState.connecting:
-                controller.ds.playerNumber = 10
+                controller.player_led.raw = 10
             elif state == ConnectionState.disconnecting:
-                controller.ds.playerNumber = 31
+                controller.player_led.raw = 31
             else:
-                controller.ds.playerNumber = 0
+                controller.player_led.player_num = 0
 
         w.main_connection_widget.mqtt_connection_widget.connection_state.connect(set_player_led)
 
@@ -551,7 +553,7 @@ def main() -> None:
 
     controller_action = QtGui.QAction("Connect Controller")
     controller_action.triggered.connect(
-            lambda: controller.ds.open()
+            lambda: controller.open()
     )
     d.addAction(controller_action)
 
