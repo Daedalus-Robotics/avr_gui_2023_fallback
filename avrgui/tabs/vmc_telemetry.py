@@ -344,7 +344,7 @@ class VMCTelemetryWidget(BaseTabWidget):
                         self.send_message("avr/gui/sound/beep", {})
                         Toast.get().send_message.emit("The vmc is shutting down!", 2.0)
 
-    def restart_service(self, service: str, show_dialog: bool, message: str = "") -> None:
+    def restart_service(self, service: str | None, show_dialog: bool, message: str = "", callback = None) -> None:
         do_reset = True
         if show_dialog:
             if '\n' in message:
