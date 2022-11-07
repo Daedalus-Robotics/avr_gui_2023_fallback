@@ -10,9 +10,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from bell.avr.mqtt.payloads import (
     AvrPcmFireLaserPayload,
     AvrPcmSetLaserOffPayload,
-    AvrPcmSetLaserOnPayload,
-    AvrPcmSetServoAbsPayload,
-    AvrPcmSetServoPctPayload,
+    AvrPcmSetLaserOnPayload
 )
 
 from .base import BaseTabWidget
@@ -270,7 +268,7 @@ class JoystickWidget(BaseTabWidget):
             limit_line.setLength(self.__maxDistance)
         return limit_line.p2()
 
-    def joystick_direction(self) -> tuple[Direction, float]:
+    def joystick_direction(self) -> tuple[Direction, float] | int:
         if not self.grabCenter and not self.controller_enabled:
             return 0
         norm_vector = QtCore.QLineF(self._center(), self.movingOffset)
@@ -308,7 +306,7 @@ class JoystickWidget(BaseTabWidget):
         self.update_servos()
 
     def center_gimbal(self) -> None:
-        self.move_gimbal(50, 50)
+        self.send_message("avr/gimbal/center", "")
 
     def set_pos(self, x: float, y: float) -> None:
         if self.controller_enabled:
@@ -411,22 +409,21 @@ class ThermalViewControlWidget(BaseTabWidget):
         laser_off_button = QtWidgets.QPushButton("Laser Off")
         joystick_layout.addWidget(laser_off_button)
 
+        kill_button = QtWidgets.QPushButton("Kill")
+        joystick_layout.addWidget(kill_button)
+
         layout.addWidget(joystick_groupbox)
 
         # connect signals
         self.joystick.emit_message.connect(self.emit_message.emit)
 
-        # center_gimbal_button.clicked.connect(
-        #         lambda: self.joystick.grabCenter()
-        # )
+        center_gimbal_button.clicked.connect(
+                lambda: self.joystick.center_gimbal()
+        )
 
         fire_laser_button.clicked.connect(
                 lambda: self.send_message("avr/pcm/fire_laser", AvrPcmFireLaserPayload())
         )
-
-        # center_gimbal_button.clicked.connect(
-        #         lambda: self.gim
-        # )
 
         laser_on_button.clicked.connect(
                 lambda: self.send_message("avr/pcm/set_laser_on", AvrPcmSetLaserOnPayload())
@@ -434,6 +431,10 @@ class ThermalViewControlWidget(BaseTabWidget):
 
         laser_off_button.clicked.connect(
                 lambda: self.send_message("avr/pcm/set_laser_off", AvrPcmSetLaserOffPayload())
+        )
+
+        kill_button.clicked.connect(
+                lambda: self.kill()
         )
 
         # don't allow us to shrink below size hint
@@ -488,6 +489,12 @@ class ThermalViewControlWidget(BaseTabWidget):
 
     def on_controller_r3(self) -> None:
         self.relative_checkbox.setChecked(not self.joystick.relative_movement)
+
+    def kill(self) -> None:
+        self.set_controller(False)
+        self.set_rel(False)
+        self.set_auto(False)
+        self.send_message("avr/gimbal/disable", "", qos = 2)
 
     def clear(self) -> None:
         # self.viewer.canvas.clear()
