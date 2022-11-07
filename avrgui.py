@@ -565,6 +565,12 @@ def main() -> None:
 
     d.setAsDockMenu()
 
+    w.main_connection_widget.mqtt_connection_widget.connection_state.connect(
+            lambda state: w.main_connection_widget.mqtt_connection_widget.mqtt_client.publish(
+                    "avr/status/request_update", "", qos = 2
+            ) if state == ConnectionState.connected else None
+    )
+
     w.main_connection_widget.mqtt_connection_widget.mqtt_client.message.connect(on_message)
 
     w.show()
