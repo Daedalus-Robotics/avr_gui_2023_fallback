@@ -372,7 +372,10 @@ class VMCTelemetryWidget(BaseTabWidget):
             if dialog.exec_() != QtWidgets.QMessageBox.Ok:
                 do_reset = False
         if do_reset:
-            self.send_message(f"avr/status/restart/{service}", {}, qos = 2)
+            if callback is None:
+                self.send_message(f"avr/status/restart/{service}", {}, qos = 2)
+            else:
+                callback()
 
     def clear(self) -> None:
         # status
