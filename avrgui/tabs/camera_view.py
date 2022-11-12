@@ -10,13 +10,12 @@ from loguru import logger
 from avrgui.lib import stream
 from avrgui.lib.enums import ConnectionState
 from avrgui.lib.graphics_label import GraphicsLabel
-from avrgui.lib.toast import Toast
 from avrgui.lib.widgets import IntLineEdit
 from avrgui.tabs.base import BaseTabWidget
 from avrgui.tabs.connection.mqtt import MQTTConnectionWidget
 
 BUFF_SIZE = 65536
-socket.setdefaulttimeout(0.5)
+socket.setdefaulttimeout(1)
 
 ENDPOINT = ""
 DEFAULT_CAMERA = {
@@ -160,7 +159,7 @@ class CameraViewWidget(BaseTabWidget):
 
         self.set_camera_info(list(CAMERAS.values())[0])
 
-        self.change_streaming.connect(self.set_streaming)
+        # self.change_streaming.connect(self.set_streaming)
 
         self.video_menu = QtWidgets.QMenu("Video")
 
