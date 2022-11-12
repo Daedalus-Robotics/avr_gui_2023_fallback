@@ -1,3 +1,5 @@
+import time
+
 from PySide6 import QtCore, QtWidgets
 
 from avrgui.lib.graphics_view import GraphicsView
@@ -13,6 +15,7 @@ class WaterDropWidget(BaseTabWidget):
     def __init__(self, parent: QtWidgets.QWidget) -> None:
         super().__init__(parent)
 
+        self.last_time = 0
         self.position_slider: QtWidgets.QSlider | None = None
         self.controller_enabled_checkbox = None
         self.controller_enabled = False
@@ -26,6 +29,7 @@ class WaterDropWidget(BaseTabWidget):
         self.view_size = (640, 360)
         self.view_pixels_size = (1280, 720)
         self.view_pixels_total = self.view_pixels_size[0] * self.view_pixels_size[1]
+        self.last_closed = True
 
     def build(self) -> None:
         layout = QtWidgets.QGridLayout()
@@ -96,7 +100,12 @@ class WaterDropWidget(BaseTabWidget):
             self.send_message("avr/pcm/set_servo_pct", {"servo": 1, "percent": percent})
 
     def set_bpu(self, value: int) -> None:
-        if self.controller_enabled:
-            percent = int(map_value(value, 0, 255, 0, 100))
-            self.send_message("avr/pcm/set_servo_pct", {"servo": 1, "percent": percent})
-            self.position_slider.setValue(value)
+        ss = time.time()
+        timesince = ss - self.last_time
+        if timesince >= 0.08 or (not self.last_closed and value == 0):
+            if self.controller_enabled:
+                percent = int(map_value(value, 0, 255, 0, 100))
+                self.send_message("avr/pcm/set_servo_pct", {"servo": 1, "percent": percent})
+                self.position_slider.setValue(value)
+            self.last_time = ss
+        self.last_closed = value == 0
