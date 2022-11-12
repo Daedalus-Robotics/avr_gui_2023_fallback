@@ -5,6 +5,7 @@ from enum import Enum, auto
 from typing import Any
 
 import colour
+import cv2
 import numpy as np
 from PySide6 import QtCore, QtGui, QtWidgets
 from bell.avr.mqtt.payloads import (
@@ -154,6 +155,7 @@ class ThermalView(QtWidgets.QWidget):
         #                 brush
         #         )
         #     y += 1
+        # cv2.imwrite("hello.png", frame)
         self.view.setPixmap(stream.convert_cv_qt(frame, (self.view.width(), self.view.height())))
 
 
@@ -209,38 +211,36 @@ class JoystickWidget(BaseTabWidget):
         """
         Update the servos on joystick movement.
         """
-        if not self.relative_movement:
-            ms = int(round(time.time() * 1000))
-            timesince = ms - self.last_time
-            if timesince < 100:
-                return
-            self.last_time = ms
+        ss = time.time()
+        timesince = ss - self.last_time
+        if timesince >= 0.1:
+            if not self.relative_movement:
+                # y_reversed = 100 - self.current_y
+                y_reversed = self.current_y
 
-            # y_reversed = 100 - self.current_y
-            y_reversed = self.current_y
+                x_servo_pos = round(map_value(self.current_x, 0, 200, 0, 180))
+                y_servo_pos = round(map_value(y_reversed, 0, 200, 0, 180))
 
-            x_servo_pos = round(map_value(self.current_x, 0, 200, 0, 180))
-            y_servo_pos = round(map_value(y_reversed, 0, 200, 0, 180))
+                if not 0 <= x_servo_pos <= 180:
+                    return
+                if not 0 <= y_servo_pos <= 180:
+                    return
 
-            if not 0 <= x_servo_pos <= 180:
-                return
-            if not 0 <= y_servo_pos <= 180:
-                return
+                self.move_gimbal(x_servo_pos, y_servo_pos)
+            else:
+                ms = int(round(time.time() * 1000))
+                timesince = ms - self.last_time
+                if timesince < 100:
+                    return
+                self.last_time = ms
 
-            self.move_gimbal(x_servo_pos, y_servo_pos)
-        else:
-            ms = int(round(time.time() * 1000))
-            timesince = ms - self.last_time
-            if timesince < 100:
-                return
-            self.last_time = ms
+                x = deadzone(map_value(self.current_x, 0, 200, -100, 100), 10)
+                y = deadzone(map_value(self.current_y, 0, 200, -100, 100), 10)
 
-            x = deadzone(map_value(self.current_x, 0, 200, -100, 100), 10)
-            y = deadzone(map_value(self.current_y, 0, 200, -100, 100), 10)
-
-            x = int(map_value(x, -100, 100, -20, 20))
-            y = int(map_value(y, -100, 100, -10, 10))
-            self.send_message("avr/gimbal/move", json.dumps({"x": x, "y": y}))
+                x = int(map_value(x, -100, 100, -20, 20))
+                y = int(map_value(y, -100, 100, -10, 10))
+                self.send_message("avr/gimbal/move", json.dumps({"x": x, "y": y}))
+            self.last_time = ss
 
     def paintEvent(self, event) -> None:
         painter = QtGui.QPainter(self)
@@ -295,6 +295,8 @@ class JoystickWidget(BaseTabWidget):
         self.grabCenter = False
         self.movingOffset = QtCore.QPointF(0, 0)
         self.update()
+        if not self.relative_movement:
+            self.center_gimbal()
 
     def mouseMoveEvent(self, event) -> Any:
         if self.grabCenter or self.controller_enabled:
