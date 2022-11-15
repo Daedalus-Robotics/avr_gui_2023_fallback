@@ -137,6 +137,7 @@ class SerialConnectionWidget(QtWidgets.QWidget):
         self.baud_rate_line_edit.setText(str(config.serial_baud_rate))
 
         # set up connections
+        self.baud_rate_line_edit.returnPressed.connect(self.connect_button.click)
         self.connect_button.clicked.connect(  # type: ignore
                 lambda: self.serial_client.login(
                         self.com_port_combo.currentText(), int(self.baud_rate_line_edit.text())

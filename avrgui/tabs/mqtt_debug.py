@@ -128,6 +128,7 @@ class ExpandCollapseQTreeWidget(QtWidgets.QTreeWidget):
 class MQTTDebugWidget(BaseTabWidget):
     # This widget is an effective clone of MQTT Explorer for diagnostic purposes.
     # Displays the latest MQTT message for every topic in a tree view.
+    send_zmq: QtCore.SignalInstance = QtCore.Signal(tuple)
 
     def __init__(self, parent: QtWidgets.QWidget) -> None:
         super().__init__(parent)
@@ -196,7 +197,10 @@ class MQTTDebugWidget(BaseTabWidget):
         self.payload_text_edit = QtWidgets.QPlainTextEdit()
         sender_layout.addRow(QtWidgets.QLabel("Payload:"), self.payload_text_edit)
         self.send_button = QtWidgets.QPushButton("Send")
+        self.zmq_send_button = QtWidgets.QPushButton("Send Over ZMQ")
+        self.zmq_send_button.setEnabled(False)
         sender_layout.addRow(self.send_button)
+        sender_layout.addRow(self.zmq_send_button)
 
         main_layout.addWidget(sender_widget)
 
@@ -205,9 +209,16 @@ class MQTTDebugWidget(BaseTabWidget):
         self.tree_widget.copy_payload.connect(self.copy_payload)
         self.tree_widget.preload_data.connect(self.preload_data)
 
-        self.send_button.clicked.connect(  # type: ignore
+        self.send_button.clicked.connect(
                 lambda: self.send_message(
                         self.topic_line_edit.text(), self.payload_text_edit.toPlainText()
+                )
+        )
+        self.zmq_send_button.clicked.connect(
+                lambda: self.send_zmq.emit(
+                        (
+                            self.topic_line_edit.text(), self.payload_text_edit.toPlainText()
+                        )
                 )
         )
 

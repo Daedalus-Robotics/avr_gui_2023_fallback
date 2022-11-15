@@ -209,6 +209,13 @@ class MainWindow(QtWidgets.QWidget):
         self.mqtt_debug_widget.emit_message.connect(
                 self.main_connection_widget.mqtt_connection_widget.mqtt_client.publish
         )
+        # self.main_connection_widget.zmq_connection_widget.zmq_client.connection_state.connect(
+        #         self.mqtt_debug_widget.zmq_send_button.setEnabled
+        # )
+        self.mqtt_debug_widget.zmq_send_button.setEnabled(True)
+        self.mqtt_debug_widget.send_zmq.connect(
+                lambda message: self.main_connection_widget.zmq_connection_widget.publish(message[0], message[1])
+        )
 
         # mqtt logger widget
 

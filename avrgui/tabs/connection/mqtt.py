@@ -182,7 +182,8 @@ class MQTTConnectionWidget(QtWidgets.QWidget):
         self.port_line_edit.setText(str(config.mqtt_port))
 
         # set up connections
-        self.hostname_line_edit.returnPressed.connect(self.connect_button.click)  # type: ignore
+        self.hostname_line_edit.returnPressed.connect(self.connect_button.click)
+        self.port_line_edit.returnPressed.connect(self.connect_button.click)
         self.connect_button.clicked.connect(  # type: ignore
                 lambda: self.mqtt_client.login(
                         self.hostname_line_edit.text(), int(self.port_line_edit.text())

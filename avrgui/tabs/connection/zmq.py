@@ -7,7 +7,6 @@ from loguru import logger
 
 from ...lib.color import wrap_text
 from ...lib.config import config
-from ...lib.toast import Toast
 from ...lib.widgets import IntLineEdit
 
 
@@ -21,15 +20,22 @@ class ZMQClient(QtCore.QObject):
         self.pub_socket = self.context.socket(zmq.PUB)
 
     def zmq_publish(self, topic: str, message: str | bytes | dict | list | None):
-        if isinstance(message, (dict | list)):
-            message = json.dumps(message)
-        self.pub_socket.send_string(f"{topic} {message}")
+        # noinspection PyBroadException
+        try:
+            if isinstance(message, (dict | list)):
+                message = json.dumps(message)
+            self.pub_socket.send_string(f"{topic} {message}")
+            logger.debug(f"Publishing {topic}: {message}")
+        except Exception:
+            logger.warning("Failed to publish on zmq")
 
     def zmq_connect(self, host: str, port: int = 5580) -> None:
+        logger.debug(f"Connecting to {host}:{port}")
         self.pub_socket.connect(f"tcp://{host}:{port}")
         self.connection_state.emit(True)
 
     def zmq_disconnect(self, host: str, port: int = 5580) -> None:
+        logger.debug(f"Disconnecting from {host}:{port}")
         self.pub_socket.disconnect(f"tcp://{host}:{port}")
         self.connection_state.emit(False)
 
@@ -96,6 +102,7 @@ class ZMQConnectionWidget(QtWidgets.QWidget):
 
         # set up connections
         self.hostname_line_edit.returnPressed.connect(self.connect_button.click)
+        self.port_line_edit.returnPressed.connect(self.connect_button.click)
         self.connect_button.clicked.connect(
                 lambda: self.zmq_connect()
         )
