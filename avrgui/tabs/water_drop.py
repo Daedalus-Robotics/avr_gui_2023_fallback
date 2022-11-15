@@ -4,6 +4,8 @@ from PySide6 import QtCore, QtWidgets
 
 from avrgui.lib.graphics_view import GraphicsView
 from avrgui.tabs.base import BaseTabWidget
+from avrgui.tabs.connection.zmq import ZMQClient
+
 
 def map_value(
         x: float, in_min: float, in_max: float, out_min: float, out_max: float
@@ -12,8 +14,10 @@ def map_value(
 
 
 class WaterDropWidget(BaseTabWidget):
-    def __init__(self, parent: QtWidgets.QWidget) -> None:
+    def __init__(self, parent: QtWidgets.QWidget, zmq_client: ZMQClient) -> None:
         super().__init__(parent)
+
+        self.zmq_client = zmq_client
 
         self.last_time = 0
         self.position_slider: QtWidgets.QSlider | None = None
@@ -96,8 +100,8 @@ class WaterDropWidget(BaseTabWidget):
 
     def set_bpu_slider(self, percent: int) -> None:
         if not self.controller_enabled:
-            print(percent)
-            self.send_message("avr/pcm/set_servo_pct", {"servo": 1, "percent": percent})
+            # self.send_message("avr/pcm/set_servo_pct", {"servo": 1, "percent": percent})
+            self.zmq_client.zmq_publish("water_drop_set", {"percent": percent})
 
     def set_bpu(self, value: int) -> None:
         ss = time.time()
@@ -105,7 +109,8 @@ class WaterDropWidget(BaseTabWidget):
         if timesince >= 0.08 or (not self.last_closed and value == 0):
             if self.controller_enabled:
                 percent = int(map_value(value, 0, 255, 0, 100))
-                self.send_message("avr/pcm/set_servo_pct", {"servo": 1, "percent": percent})
+                # self.send_message("avr/pcm/set_servo_pct", {"servo": 1, "percent": percent})
+                self.zmq_client.zmq_publish("water_drop_set", {"percent": percent})
                 self.position_slider.setValue(value)
             self.last_time = ss
         self.last_closed = value == 0

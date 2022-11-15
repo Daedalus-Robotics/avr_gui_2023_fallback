@@ -1,4 +1,5 @@
 import argparse
+import json
 import os.path
 import sys
 
@@ -134,7 +135,7 @@ class MainWindow(QtWidgets.QWidget):
         super().__init__()
 
         self.menu_bar = None
-        self.toast = None
+        self.toast: Toast | None = None
         self.tabs = None
         self.main_connection_widget = None
         self.pcc_tester_widget = None
@@ -186,6 +187,20 @@ class MainWindow(QtWidgets.QWidget):
         )
 
         self.menu_bar.addMenu(self.main_connection_widget.mqtt_connection_widget.mqtt_menu)
+
+        def toast_mqtt(topic, message) -> None:
+            if topic == "avr/gui/toast":
+                try:
+                    message = json.loads(message)
+                    text = message.get("text", "")
+                    timeout = message.get("timout", 1)
+                    self.toast.show_message(text, timeout)
+                except json.JSONDecodeError:
+                    pass
+
+        self.main_connection_widget.mqtt_connection_widget.mqtt_client.message.connect(
+                toast_mqtt
+        )
 
         # pcc tester widget
 
@@ -280,7 +295,10 @@ class MainWindow(QtWidgets.QWidget):
 
         # thermal view widget
 
-        self.thermal_view_control_widget = ThermalViewControlWidget(self)
+        self.thermal_view_control_widget = ThermalViewControlWidget(
+                self,
+                self.main_connection_widget.zmq_connection_widget.zmq_client
+        )
         self.thermal_view_control_widget.build()
         self.thermal_view_control_widget.pop_in.connect(self.tabs.pop_in)
         self.tabs.addTab(
@@ -342,7 +360,10 @@ class MainWindow(QtWidgets.QWidget):
 
         # water drop widget
 
-        self.water_drop_widget = WaterDropWidget(self)
+        self.water_drop_widget = WaterDropWidget(
+                self,
+                self.main_connection_widget.zmq_connection_widget.zmq_client
+        )
         self.water_drop_widget.build()
         self.water_drop_widget.pop_in.connect(self.tabs.pop_in)
         self.tabs.addTab(
