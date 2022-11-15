@@ -1,5 +1,6 @@
 from PySide6 import QtWidgets
 
+from .zmq import ZMQConnectionWidget
 from ..base import BaseTabWidget
 from .mqtt import MQTTConnectionWidget
 from .serial import SerialConnectionWidget
@@ -34,6 +35,19 @@ class MainConnectionWidget(BaseTabWidget):
                 QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed
         )
         layout.addWidget(mqtt_groupbox)
+
+        zmq_groupbox = QtWidgets.QGroupBox("ZMQ")
+        zmq_layout = QtWidgets.QVBoxLayout()
+        zmq_groupbox.setLayout(zmq_layout)
+
+        self.zmq_connection_widget = ZMQConnectionWidget(self)
+        self.zmq_connection_widget.build()
+        zmq_layout.addWidget(self.zmq_connection_widget)
+
+        zmq_groupbox.setSizePolicy(
+                QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed
+        )
+        layout.addWidget(zmq_groupbox)
 
         serial_groupbox = QtWidgets.QGroupBox("Serial")
         serial_layout = QtWidgets.QVBoxLayout()
