@@ -193,7 +193,7 @@ class MainWindow(QtWidgets.QWidget):
                 try:
                     message = json.loads(message)
                     text = message.get("text", "")
-                    timeout = message.get("timout", 1)
+                    timeout = message.get("timeout", 1)
                     self.toast.show_message(text, timeout)
                 except json.JSONDecodeError:
                     pass
@@ -382,6 +382,20 @@ class MainWindow(QtWidgets.QWidget):
         self.controller_lt.connect(
                 self.water_drop_widget.set_bpu
         )
+        self.controller_touchBtn.connect(
+                lambda: self.water_drop_widget.zmq_client.zmq_publish(
+                        "water_drop_kill",
+                        ""
+                )
+        )
+        self.controller_rb.connect(
+                lambda: self.water_drop_widget.zmq_client.zmq_publish(
+                        "water_drop_try",
+                        {
+                            "tag": self.water_drop_widget.selected_tag
+                        }
+                )
+        )
 
         # moving map widget
 
@@ -550,13 +564,6 @@ def main() -> None:
 
         w.main_connection_widget.mqtt_connection_widget.connection_state.connect(set_player_led)
 
-        w.controller_touchBtn.connect(
-                lambda: w.main_connection_widget.mqtt_connection_widget.mqtt_client.publish(
-                        "avr/autonomy/stop",
-                        ""
-                )
-        )
-
     d = QtWidgets.QMenu(w)
     mqtt_action = QtGui.QAction("MQTT Disconnected")
     mqtt_action.triggered.connect(w.main_connection_widget.mqtt_connection_widget.mqtt_client.logout)
@@ -586,12 +593,10 @@ def main() -> None:
     d.addAction(kill_action)
 
     controller_action = QtGui.QAction("Connect Controller")
-    controller_action.triggered.connect(
+    w.main_connection_widget.controller_connect_button.triggered.connect(
             lambda: controller.open()
     )
     d.addAction(controller_action)
-
-    d.setAsDockMenu()
 
     w.main_connection_widget.mqtt_connection_widget.connection_state.connect(
             lambda state: w.main_connection_widget.mqtt_connection_widget.mqtt_client.publish(

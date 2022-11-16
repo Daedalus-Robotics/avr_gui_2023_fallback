@@ -14,6 +14,7 @@ class MainConnectionWidget(BaseTabWidget):
     def __init__(self, parent: QtWidgets.QWidget) -> None:
         super().__init__(parent)
 
+        self.controller_connect_button = None
         self.setWindowTitle("Connections")
 
     def build(self) -> None:
@@ -61,3 +62,6 @@ class MainConnectionWidget(BaseTabWidget):
                 QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed
         )
         layout.addWidget(serial_groupbox)
+
+        self.controller_connect_button = QtWidgets.QPushButton("Connect DualSense Controller")
+        layout.addWidget(self.controller_connect_button)
