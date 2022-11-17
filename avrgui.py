@@ -22,15 +22,9 @@ from avrgui.tabs.thermal_view_control import ThermalViewControlWidget
 # from avrgui.tabs.vmc_control import VMCControlWidget
 from avrgui.tabs.vmc_telemetry import VMCTelemetryWidget
 from avrgui.tabs.water_drop import WaterDropWidget
+from avrgui.lib.controller.controller import Controller
 
-try:
-    from avrgui.lib.controller.controller import Controller
-
-    controller: Controller | None = Controller()
-except ImportError as e:
-    print(e)
-    Controller = None
-    controller = None
+controller = Controller()
 
 
 class TabBar(QtWidgets.QTabBar):
