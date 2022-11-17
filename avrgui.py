@@ -10,6 +10,7 @@ from playsound import playsound
 from avrgui.lib.enums import ConnectionState
 from avrgui.lib.qt_icon import set_icon
 from avrgui.lib.toast import Toast
+from avrgui.lib.water_drop_popup import WaterDropPopup
 # from avrgui.tabs.autonomy import AutonomyWidget
 from avrgui.tabs.camera_view import CameraViewWidget
 from avrgui.tabs.connection.main import MainConnectionWidget
@@ -128,6 +129,7 @@ class MainWindow(QtWidgets.QWidget):
     def __init__(self) -> None:
         super().__init__()
 
+        self.water_drop_popup = None
         self.menu_bar = None
         self.toast: Toast | None = None
         self.tabs = None
@@ -154,6 +156,7 @@ class MainWindow(QtWidgets.QWidget):
         Build the GUI layout
         """
         self.toast = Toast.get(self)
+        self.water_drop_popup = WaterDropPopup(self)
         self.menu_bar = QtWidgets.QMenuBar()
 
         layout = QtWidgets.QVBoxLayout(self)
@@ -503,14 +506,11 @@ class MainWindow(QtWidgets.QWidget):
         controller.close()
 
 
-def on_message(topic: str, payload: dict) -> None:
-    if "avr/gui/sound/" in topic:
-        filename = topic[len("avr/gui/sound/"):]
-        if os.path.isfile(f"assets/sound/{filename}.wav"):
-            playsound(f"assets/sound/{filename}.wav", block = False)
+w: MainWindow | None = None
 
 
 def main() -> None:
+    global w
     # create Qt Application instance
     app = QtWidgets.QApplication()
     pixmap = QtGui.QPixmap("assets/splash.png")
@@ -605,6 +605,19 @@ def main() -> None:
 
     # run
     sys.exit(app.exec())
+
+
+def on_message(topic: str, payload: str | dict) -> None:
+    if "avr/gui/sound/" in topic:
+        filename = topic[len("avr/gui/sound/"):]
+        if os.path.isfile(f"assets/sound/{filename}.wav"):
+            playsound(f"assets/sound/{filename}.wav", block = False)
+    if "lol" in topic:
+        try:
+            num = int(payload)
+        except:
+            num = -1
+        w.water_drop_popup.send_popup.emit(0)
 
 
 if __name__ == "__main__":

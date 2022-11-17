@@ -26,6 +26,8 @@ class WaterDropWidget(BaseTabWidget):
         self.canvas = None
         self.view = None
 
+        self.selected_tag = 0
+
         self.is_streaming = False
 
         self.setWindowTitle("Water Drop")
