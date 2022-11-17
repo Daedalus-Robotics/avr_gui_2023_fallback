@@ -573,7 +573,7 @@ def main() -> None:
     d.addAction(mqtt_action)
 
     kill_action = QtGui.QAction("Kill Motors")
-    mqtt_action.triggered.connect(
+    kill_action.triggered.connect(
             lambda: w.main_connection_widget.mqtt_connection_widget.mqtt_client.publish(
                     "avr/kill", "", qos = 2
             )
@@ -587,7 +587,7 @@ def main() -> None:
     d.addAction(kill_action)
 
     controller_action = QtGui.QAction("Connect Controller")
-    w.main_connection_widget.controller_connect_button.triggered.connect(
+    w.main_connection_widget.controller_connect_button.clicked.connect(
             lambda: controller.open()
     )
     d.addAction(controller_action)
