@@ -467,8 +467,8 @@ class ThermalViewControlWidget(BaseTabWidget):
         self.joystick.controller_enabled = enabled
 
     def set_auto(self, enabled: bool) -> None:
-        # self.send_message("avr/gimbal/auto_aim", json.dumps({"enabled": enabled}))
-        self.zmq_client.zmq_publish("gimbal_auto", {"enabled": enabled})
+        self.send_message("avr/gimbal/auto_aim", json.dumps({"enabled": enabled}))
+        # self.zmq_client.zmq_publish("gimbal_auto", {"enabled": enabled})
 
     def set_rel(self, state: bool) -> None:
         self.joystick.relative_movement = state
@@ -503,8 +503,8 @@ class ThermalViewControlWidget(BaseTabWidget):
             return
         self.last_fire = ms
 
-        # self.send_message("avr/pcm/fire_laser", AvrPcmFireLaserPayload())
-        self.zmq_client.zmq_publish("gimbal_fire", "")
+        self.send_message("avr/pcm/fire_laser", AvrPcmFireLaserPayload())
+        # self.zmq_client.zmq_publish("gimbal_fire", "")
 
     def on_controller_rb(self, state: bool) -> None:
         self.send_message("avr/gimbal/fire-ready", {"state": state})

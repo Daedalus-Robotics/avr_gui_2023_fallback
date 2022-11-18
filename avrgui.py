@@ -379,20 +379,20 @@ class MainWindow(QtWidgets.QWidget):
         self.controller_lt.connect(
                 self.water_drop_widget.set_bpu
         )
-        self.controller_touchBtn.connect(
-                lambda: self.water_drop_widget.zmq_client.zmq_publish(
-                        "water_drop_kill",
-                        ""
-                )
-        )
-        self.controller_rb.connect(
-                lambda: self.water_drop_widget.zmq_client.zmq_publish(
-                        "water_drop_try",
-                        {
-                            "tag": self.water_drop_widget.selected_tag
-                        }
-                )
-        )
+        # self.controller_touchBtn.connect(
+        #         lambda: self.water_drop_widget.zmq_client.zmq_publish(
+        #                 "water_drop_kill",
+        #                 ""
+        #         )
+        # )
+        # self.controller_rb.connect(
+        #         lambda: self.water_drop_widget.zmq_client.zmq_publish(
+        #                 "water_drop_try",
+        #                 {
+        #                     "tag": self.water_drop_widget.selected_tag
+        #                 }
+        #         )
+        # )
 
         # moving map widget
 
@@ -612,12 +612,6 @@ def on_message(topic: str, payload: str | dict) -> None:
         filename = topic[len("avr/gui/sound/"):]
         if os.path.isfile(f"assets/sound/{filename}.wav"):
             playsound(f"assets/sound/{filename}.wav", block = False)
-    if "lol" in topic:
-        try:
-            num = int(payload)
-        except:
-            num = -1
-        w.water_drop_popup.send_popup.emit(0)
 
 
 if __name__ == "__main__":
