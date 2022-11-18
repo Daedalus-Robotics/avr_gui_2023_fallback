@@ -102,8 +102,8 @@ class WaterDropWidget(BaseTabWidget):
 
     def set_bpu_slider(self, percent: int) -> None:
         if not self.controller_enabled:
-            # self.send_message("avr/pcm/set_servo_pct", {"servo": 1, "percent": percent})
-            self.zmq_client.zmq_publish("water_drop_set", {"percent": percent})
+            self.send_message("avr/pcm/set_servo_pct", {"servo": 1, "percent": percent})
+            # self.zmq_client.zmq_publish("water_drop_set", {"percent": percent})
 
     def set_bpu(self, value: int) -> None:
         ss = time.time()
@@ -111,8 +111,8 @@ class WaterDropWidget(BaseTabWidget):
         if timesince >= 0.08 or (not self.last_closed and value == 0):
             if self.controller_enabled:
                 percent = int(map_value(value, 0, 255, 0, 100))
-                # self.send_message("avr/pcm/set_servo_pct", {"servo": 1, "percent": percent})
-                self.zmq_client.zmq_publish("water_drop_set", {"percent": percent})
+                self.send_message("avr/pcm/set_servo_pct", {"servo": 1, "percent": percent})
+                # self.zmq_client.zmq_publish("water_drop_set", {"percent": percent})
                 self.position_slider.setValue(value)
             self.last_time = ss
         self.last_closed = value == 0

@@ -204,20 +204,20 @@ class JoystickWidget(BaseTabWidget):
         #         "avr/pcm/set_servo_pct",
         #         AvrPcmSetServoPctPayload(servo = 3, percent = y_servo_percent),
         # )
-        # self.send_message(
-        #         "avr/gimbal/pos",
-        #         {
-        #             "x": x_servo,
-        #             "y": y_servo
-        #         }
-        # )
-        self.zmq_client.zmq_publish(
-                "gimbal_pos",
+        self.send_message(
+                "avr/gimbal/pos",
                 {
                     "x": x_servo,
                     "y": y_servo
                 }
         )
+        # self.zmq_client.zmq_publish(
+        #         "gimbal_pos",
+        #         {
+        #             "x": x_servo,
+        #             "y": y_servo
+        #         }
+        # )
 
     def update_servos(self) -> None:
         """
