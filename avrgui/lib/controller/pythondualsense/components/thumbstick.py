@@ -51,6 +51,6 @@ class Thumbstick(Button):
         :param position:
         :return:
         """
-        if position is not (self._x, self._y):
+        if position[0] != self._x or position[1] != self._y:
             self._x, self._y = position
             self.on_move((self._x, self._y))

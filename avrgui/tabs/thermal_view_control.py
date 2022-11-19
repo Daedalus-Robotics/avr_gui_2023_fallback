@@ -204,20 +204,20 @@ class JoystickWidget(BaseTabWidget):
         #         "avr/pcm/set_servo_pct",
         #         AvrPcmSetServoPctPayload(servo = 3, percent = y_servo_percent),
         # )
-        self.send_message(
-                "avr/gimbal/pos",
-                {
-                    "x": x_servo,
-                    "y": y_servo
-                }
-        )
-        # self.zmq_client.zmq_publish(
-        #         "gimbal_pos",
+        # self.send_message(
+        #         "avr/gimbal/pos",
         #         {
         #             "x": x_servo,
         #             "y": y_servo
         #         }
         # )
+        self.zmq_client.zmq_publish(
+                "gimbal_pos",
+                {
+                    "x": x_servo,
+                    "y": y_servo
+                }
+        )
 
     def update_servos(self) -> None:
         """
@@ -225,7 +225,7 @@ class JoystickWidget(BaseTabWidget):
         """
         ss = time.time()
         timesince = ss - self.last_time
-        if timesince >= 0.1:
+        if timesince >= 0.25:
             if not self.relative_movement:
                 # y_reversed = 100 - self.current_y
                 y_reversed = self.current_y
@@ -240,11 +240,11 @@ class JoystickWidget(BaseTabWidget):
 
                 self.move_gimbal(x_servo_pos, y_servo_pos)
             else:
-                ms = int(round(time.time() * 1000))
-                timesince = ms - self.last_time
-                if timesince < 100:
-                    return
-                self.last_time = ms
+                # ms = int(round(time.time() * 1000))
+                # timesince = ms - self.last_time
+                # if timesince > 100:
+                #     return
+                # self.last_time = ms
 
                 x = deadzone(map_value(self.current_x, 0, 200, -100, 100), 10)
                 y = deadzone(map_value(self.current_y, 0, 200, -100, 100), 10)
@@ -503,8 +503,8 @@ class ThermalViewControlWidget(BaseTabWidget):
             return
         self.last_fire = ms
 
-        self.send_message("avr/pcm/fire_laser", AvrPcmFireLaserPayload())
-        # self.zmq_client.zmq_publish("gimbal_fire", "")
+        # self.send_message("avr/pcm/fire_laser", AvrPcmFireLaserPayload())
+        self.zmq_client.zmq_publish("gimbal_fire", "")
 
     def on_controller_rb(self, state: bool) -> None:
         self.send_message("avr/gimbal/fire-ready", {"state": state})
