@@ -1,4 +1,4 @@
-from pythondualsense.const import AudioEnableFlags, AudioMuteFlags, UpdateFlags1, UpdateFlags2
+from ..const import AudioEnableFlags, AudioMuteFlags, UpdateFlags1, UpdateFlags2
 
 
 class Microphone:
