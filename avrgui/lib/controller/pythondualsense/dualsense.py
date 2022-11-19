@@ -6,12 +6,14 @@ import hid
 from .components.button import Button
 from .components.dpad import Dpad
 from .components.mic_button import MicButton
+from .components.microphone import Microphone
 from .components.player_led import PlayerLed
 from .components.rumble_motor import RumbleMotor
+from .components.speaker import Speaker
 from .components.thumbstick import Thumbstick
 from .components.touchpad import Touchpad
 from .components.trigger import Trigger
-from .const import (BLUETOOTH_REPORT_LENGTH, BatteryState, FeatureReport, USB_REPORT_LENGTH, UpdateFlags1)
+from .const import BLUETOOTH_REPORT_LENGTH, BatteryState, FeatureReport, USB_REPORT_LENGTH, UpdateFlags1
 from .lib.callback import Callback
 from .lib.controller_hid import find_devices, get_checksum, get_device
 from .lib.utils import ensure_list_length
@@ -20,16 +22,17 @@ from .lib.utils import ensure_list_length
 class Dualsense:
     def __init__(self, serial_number: str = None, path: str = None) -> None:
         """
-        Create a new Dualsense object.
+        Create a new Dualsense object. This will control a dualsense or PS5 controller.
         If you have multiple controllers, you may need to specify a serial_number or path.
 
         :param serial_number: The serial of the controller (only needed for multiple controllers)
         :param path: The path to the controller device (only needed for multiple controllers)
         """
-        self.use_bluetooth = False
-        self._report_length = USB_REPORT_LENGTH
         self.serial_number = serial_number
         self.path = path
+
+        self._use_bluetooth = False
+        self._report_length = USB_REPORT_LENGTH
 
         self.circle = Button()
         self.cross = Button()
@@ -50,6 +53,8 @@ class Dualsense:
         self.player_led = PlayerLed()
         self.left_rumble = RumbleMotor()
         self.right_rumble = RumbleMotor()
+        self.speaker = Speaker()
+        self.microphone = Microphone()
 
         self.on_update = Callback()
         """
@@ -88,6 +93,17 @@ class Dualsense:
         # self.val27 = 0
         # self.val28 = 0
         # self.val31 = 0
+
+        # self.add_flag1 = 0
+        # self.add_flag2 = 0
+        # self.val5 = 0
+        # self.val6 = 0
+        # self.val7 = 0
+        # self.val8 = 0
+        # self.val10 = 0
+        # self.val38 = 0
+
+        self._loop_running = False
 
     def __del__(self) -> None:
         """
@@ -205,16 +221,20 @@ class Dualsense:
         )
         return calibration_feature_report
 
-    def open(self, device: hid.device = None, hold_until_connected: bool = False, force_bluetooth: bool = False) -> bool:
+    def open(self, device: hid.device = None, hold: bool = True, force_bluetooth: bool = False) -> bool:
         """
         Open the controller hid device and start the update loop.
         You can force the Dualsense object to use a specific device by passing it in.
 
         :param device: The device object of the controller (Optional)
+        :param hold: Whether to hold until the first input report has been received and the first output report has
+        been sent.
         :param force_bluetooth: This is only needed on sometimes on macOS. The auto-detection does not work because you
         can't use the serial number
         :return: Whether the controller is connected via bluetooth
         :raise IOError: If the device is already open or there is an error
+        :raise OSError: If there is an issue with hidapi
+        :raise ValueError:
         """
         if not self.is_open:
             use_bt = force_bluetooth
@@ -252,8 +272,8 @@ class Dualsense:
                 self._device_hardware_version = firmware_feature_request[24:28]
                 self._device_firmware_version = firmware_feature_request[28:32]
 
-                self.use_bluetooth = use_bt
-                self._report_length = BLUETOOTH_REPORT_LENGTH if self.use_bluetooth else USB_REPORT_LENGTH
+                self._use_bluetooth = use_bt
+                self._report_length = BLUETOOTH_REPORT_LENGTH if self._use_bluetooth else USB_REPORT_LENGTH
             except (IOError, OSError, ValueError) as e:
                 try:
                     device.close()
@@ -263,6 +283,10 @@ class Dualsense:
             self._update_thread_running = True
             self._update_thread = Thread(target = self._update, daemon = True)
             self._update_thread.start()
+            self._loop_running = False
+            if hold:
+                while not self._loop_running:
+                    pass
             return use_bt
 
     def close(self) -> None:
@@ -272,6 +296,7 @@ class Dualsense:
         """
         if self.is_open:
             self._update_thread_running = False
+        self._loop_running = False
 
     def force_update(self) -> None:
         """
@@ -284,6 +309,8 @@ class Dualsense:
         self.player_led.force_update()
         self.left_rumble.force_update()
         self.right_rumble.force_update()
+        self.speaker.force_update()
+        self.microphone.force_update()
 
     def _update(self) -> None:
         """
@@ -292,7 +319,7 @@ class Dualsense:
         """
         try:
             while self._update_thread_running:
-                input_report = list(self._device.read(self._report_length))
+                input_report = list(self._device.read(self._report_length, 1000))
                 if len(input_report) == self._report_length:
                     self._update_inputs(input_report)
                 else:
@@ -307,6 +334,7 @@ class Dualsense:
                 self._device.write(bytes(report))
 
                 # time.sleep(1)
+                self._loop_running = True
 
                 self.on_update()
         except OSError:
@@ -325,7 +353,7 @@ class Dualsense:
         :param input_report: The report to get the inputs from
         """
         # print(input_report[7:8] + input_report[11:16] + input_report[28:33] + input_report[41:])
-        if self.use_bluetooth:
+        if self._use_bluetooth:
             input_report.pop(1)
 
         buttons = input_report[8]
@@ -357,6 +385,22 @@ class Dualsense:
 
         self.touchpad.pressed = ps_mic_touch_buttons & 0x02 != 0
 
+        self.touchpad.touch_point_1.id = input_report[33] & 0x7F
+        self.touchpad.touch_point_1.is_selected = (input_report[33] & 0x80) == 0
+        x = ((input_report[35] & 0x0f) << 8) | (input_report[34])
+        y = ((input_report[36]) << 4) | ((input_report[35] & 0xf0) >> 4)
+        self.touchpad.touch_point_1.pos = x, y
+
+        self.touchpad.touch_point_2.id = input_report[37] & 0x7F
+        self.touchpad.touch_point_2.is_selected = (input_report[37] & 0x80) == 0
+        x = ((input_report[39] & 0x0f) << 8) | (input_report[38])
+        y = ((input_report[40]) << 4) | ((input_report[39] & 0xf0) >> 4)
+        self.touchpad.touch_point_2.pos = x, y
+
+        # self.state.gyro.Pitch = int.from_bytes(([inReport[22], inReport[23]]), byteorder = 'little', signed = True)
+        # self.state.gyro.Yaw = int.from_bytes(([inReport[24], inReport[25]]), byteorder = 'little', signed = True)
+        # self.state.gyro.Roll = int.from_bytes(([inReport[26], inReport[27]]), byteorder = 'little', signed = True)
+
         status = input_report[53]
         battery_percent = min(((status & 0x0f) * 10) + 5, 100)
         if battery_percent != self._battery_percent:
@@ -374,11 +418,11 @@ class Dualsense:
         :return: The output report
         """
         report = [0] * self._report_length
-        if self.use_bluetooth:
+        if self._use_bluetooth:
             report.pop()
             report.pop()
 
-        report[0] = 0x31 if self.use_bluetooth else 0x02
+        report[0] = 0x31 if self._use_bluetooth else 0x02
 
         mic_button_set_brightness = False
         mic_button_flag, mic_button_report, led_flag, brightness_flag = self.mic_button.get_report()
@@ -400,7 +444,7 @@ class Dualsense:
         # report[23] = self.val23
         # report[24] = self.val24
         # report[25] = self.val25
-        # I have no idea what these values do but the triggers vibrate when I set them
+        # I have no idea what these values do but the triggers vibrate when I set some of them them
         # report[26] = self.val26  # ?
         # report[27] = self.val27  # this seems to be the start of the vibration zone, but it only works sometimes
         # report[28] = self.val28  # this might be something else about the vibration zone, but it's not the end
@@ -439,9 +483,32 @@ class Dualsense:
         report[1] |= rumble_flag
         report[3] = right_rumble_report
 
-        if self.use_bluetooth:
-            report = get_checksum(report)
+        speaker_flag, mute_flag, speaker_report, speaker_enable_flag, speaker_mute_flag = self.speaker.get_report()
+        report[1] |= speaker_flag
+        report[2] |= mute_flag
+        report[5:7] = speaker_report
+        report[8] |= speaker_enable_flag
+        report[10] |= speaker_mute_flag
+
+        mic_flag, mute_flag, mic_report, mic_enable_flag, mic_mute_flag = self.microphone.get_report()
+        report[1] |= mic_flag
+        report[2] |= mute_flag
+        report[7] = mic_report
+        report[8] |= mic_enable_flag
+        report[10] |= mic_mute_flag
+
+        if self._use_bluetooth:
             report.insert(1, 0x00)
             report.insert(2, 0x10)
+            report = get_checksum(report)
+
+        # report[1] |= self.add_flag1
+        # report[2] |= self.add_flag2
+        # report[5] = self.val5
+        # report[6] = self.val6
+        # report[7] = self.val7
+        # report[8] |= self.val8
+        # report[10] |= self.val10
+        # report[38] |= self.val38
 
         return report

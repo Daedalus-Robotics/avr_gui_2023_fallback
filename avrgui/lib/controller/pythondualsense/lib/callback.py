@@ -22,10 +22,10 @@ class Callback(Generic[ArgumentType]):
         """
         for callback in self._callback_list:
             try:
+                # Call with an argument if one is given
                 if argument is not None:
                     callback(argument)
                 else:
-                    # noinspection PyArgumentList
                     callback()
             except TypeError as e:
                 print(e)

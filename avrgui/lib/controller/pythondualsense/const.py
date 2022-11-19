@@ -27,9 +27,10 @@ class UpdateFlags1(IntFlag):
     RUMBLE = 0x01 | 0x02  # For some reason both of these values are required for rumble
     LEFT_TRIGGER = 0x08
     RIGHT_TRIGGER = 0x04
-    AUDIO_VOLUME = 0x10
-    INTERNAL_HEADPHONE_TOGGLE = 0x20
+    HEADSET_VOLUME = 0x10
+    INTERNAL_SPEAKER_VOLUME = 0x20
     MICROPHONE_VOLUME = 0x40
+    INTERNAL_MIC_HEADSET = 0x80
 
 
 class UpdateFlags2(IntFlag):
@@ -42,6 +43,22 @@ class UpdateFlags2(IntFlag):
     _ = 0x20  # I haven't needed this. I have no idea what its for
     MOTOR_POWER = 0x40
     __ = 0x80  # I haven't needed this. I have no idea what its for
+
+
+class AudioEnableFlags(IntFlag):
+    NONE = 0x00
+    MICROPHONE = 0x01  # This flag is used for both the internal mic and mics on connected headphones
+    _ = 0x04  # I haven't needed this. I have no idea what its for
+    __ = 0x08  # I haven't needed this. I have no idea what its for
+    DISABLE_HEADPHONES = 0x10
+    INTERNAL_SPEAKER = 0x20
+
+
+class AudioMuteFlags(IntFlag):
+    NONE = 0x00
+    MICROPHONE = 0x10
+    INTERNAL = 0x20
+    HEADSET = 0x40
 
 
 class LedFlags(IntFlag):

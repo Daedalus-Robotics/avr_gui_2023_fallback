@@ -25,7 +25,8 @@ def find_devices(
     :param path: The path to the device. When this is defined, the function will return None or a single device
     :return: A list of dictionaries describing all the devices that were found or a single dictionary for one device
     """
-    devices = enumerate(vendor_id, product_id,)
+    devices = enumerate(vendor_id, product_id)
+    # There is only one device with a given path
     if path is not None:
         if isinstance(path, str):
             path = bytes(path, "utf8")
@@ -33,11 +34,13 @@ def find_devices(
             if hid_device['path'] == path:
                 return hid_device
         return None
+    # There should only be one device with a given serial number
     elif serial_number is not None:
         for hid_device in devices:
             if hid_device['serial_number'] == serial_number:
                 return hid_device
         return None
+    # Return all the devices found with the vendor_id and the product_id
     else:
         return devices
 
@@ -60,14 +63,16 @@ def get_device(
     :return: The hidapi device object
     :raises IOError: If there was any error in connecting or if the device is already open
     """
+    # This is so you can pass in a dict returned by the find_devices function
     if device_dict is not None:
         vendor_id = device_dict.get('vendor_id', None)
         product_id = device_dict.get('product_id', None)
         serial_number = device_dict.get('serial_number', None)
     hid_device = device()
+    # Open using the most specific identifier
     if path is not None:
         hid_device.open_path(path)
-    elif serial_number is not None:
+    elif serial_number is not None and len(serial_number) > 0:
         hid_device.open(serial_number = serial_number)
     else:
         hid_device.open(vendor_id, product_id)
@@ -81,7 +86,8 @@ def get_checksum(report: list[int]) -> list[int]:
     :param report: The report to get the checksum of
     :return: The report with the checksum appended onto it
     """
-    report = report[:]
+    # Make a copy of report
+    # report = report[:]
 
     # Get the crc32 hash of the first 74 values in the report
     crc = crc32_le(0xFFFFFFFF, [CRC32_SEED])

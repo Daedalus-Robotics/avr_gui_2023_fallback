@@ -47,15 +47,6 @@ class Trigger(Button):
         self._trigger_section = (0, 0)
 
     @property
-    def pressed(self) -> bool:
-        """
-        Get the pressed state of the button
-
-        :return: The state of the button
-        """
-        return super().pressed
-
-    @property
     def pos(self) -> int:
         """
         Get the current position of the trigger
@@ -72,14 +63,12 @@ class Trigger(Button):
 
         :param value: The new position of the trigger (0-255)
         """
-        if value is not self._pos:
+        if value != self._pos:
             self.on_pos(value)
 
+            # Update pressed based on whether the trigger is passed the threshold
             if value > self.threshold > self._pos or value < self.threshold < self._pos:
-                state = True if value > self.threshold > self._pos else False
-                self.on_state(state)
-                if state:
-                    self.on_press()
+                self.pressed = True if value > self.threshold > self._pos else False
 
             self._pos = value
 
@@ -99,7 +88,7 @@ class Trigger(Button):
 
         :param mode: The new trigger mode
         """
-        if isinstance(mode, (TriggerMode, int)) and 0 <= mode <= 255:
+        if mode != self._trigger_mode and isinstance(mode, (TriggerMode, int)) and 0 <= mode <= 255:
             self._trigger_changed = True
             self._trigger_mode = mode
 
@@ -119,7 +108,7 @@ class Trigger(Button):
 
         :param force: Trigger force (0-255)
         """
-        if 0 <= force <= 255:
+        if force != self._trigger_force and 0 <= force <= 255:
             self._trigger_changed = True
             self._trigger_force = force
 
@@ -141,7 +130,7 @@ class Trigger(Button):
         :param section: A tuple containing the start (0-255) and end (0-255) of the resistance section
         """
         section = tuple(section)
-        if len(section) == 2 and 0 <= section[0] <= 255 and 0 <= section[1] <= 255:
+        if section != self._trigger_section and len(section) == 2 and 0 <= section[0] <= 255 and 0 <= section[1] <= 255:
             self._trigger_changed = True
             self._trigger_section = section
 
