@@ -279,7 +279,7 @@ class CameraViewWidget(BaseTabWidget):
                 if not self.shutting_down:
                     self.change_streaming.emit(False)
                 break
-            time.sleep(1 / 100)
+            time.sleep(1 / 30)
         logger.debug("Disconnected socket")
         try:
             client_socket.shutdown(socket.SHUT_RDWR)

@@ -503,11 +503,15 @@ class ThermalViewControlWidget(BaseTabWidget):
             return
         self.last_fire = ms
 
-        # self.send_message("avr/pcm/fire_laser", AvrPcmFireLaserPayload())
-        self.zmq_client.zmq_publish("gimbal_fire", "")
+        self.send_message("avr/pcm/fire_laser", AvrPcmFireLaserPayload())
+        # self.zmq_client.zmq_publish("gimbal_fire", "")
 
     def on_controller_rb(self, state: bool) -> None:
-        self.send_message("avr/gimbal/fire-ready", {"state": state})
+        if state:
+            self.send_message("avr/pcm/set_laser_on", AvrPcmSetLaserOnPayload())
+        else:
+            self.send_message("avr/pcm/set_laser_off", AvrPcmSetLaserOffPayload())
+        # self.send_message("avr/gimbal/fire-ready", {"state": state})
 
     def on_controller_circle(self, state: bool) -> None:
         self.auto_checkbox.setChecked(state)
