@@ -7,6 +7,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from loguru import logger
 from playsound import playsound
 
+from avrgui.lib.controller.controller import Controller
 from avrgui.lib.enums import ConnectionState
 from avrgui.lib.qt_icon import set_icon
 from avrgui.lib.toast import Toast
@@ -23,7 +24,6 @@ from avrgui.tabs.thermal_view_control import ThermalViewControlWidget
 # from avrgui.tabs.vmc_control import VMCControlWidget
 from avrgui.tabs.vmc_telemetry import VMCTelemetryWidget
 from avrgui.tabs.water_drop import WaterDropWidget
-from avrgui.lib.controller.controller import Controller
 
 controller = Controller()
 
@@ -271,7 +271,7 @@ class MainWindow(QtWidgets.QWidget):
                         True,
                         """This will shutdown the vehicle management computer.
                         This means that you have to unplug it and re plug it to restart it again.""",
-                        lambda: self.vmc_telemetry_widget.send_message("avr/shutdown", "", qos = 2)
+                        lambda: self.vmc_telemetry_widget.send_message("avr/shutdown", "", qos=2)
                 )
         )
 
@@ -379,20 +379,20 @@ class MainWindow(QtWidgets.QWidget):
         self.controller_lt.connect(
                 self.water_drop_widget.set_bpu
         )
-        # self.controller_touchBtn.connect(
-        #         lambda: self.water_drop_widget.zmq_client.zmq_publish(
-        #                 "water_drop_kill",
-        #                 ""
-        #         )
-        # )
-        # self.controller_rb.connect(
-        #         lambda: self.water_drop_widget.zmq_client.zmq_publish(
-        #                 "water_drop_try",
-        #                 {
-        #                     "tag": self.water_drop_widget.selected_tag
-        #                 }
-        #         )
-        # )
+        self.controller_touchBtn.connect(
+                lambda: self.water_drop_widget.zmq_client.zmq_publish(
+                        "avr/autonomy/kill",
+                        ""
+                )
+        )
+        self.controller_rb.connect(
+                lambda: self.water_drop_widget.zmq_client.zmq_publish(
+                        "avr/autonomy/set_auto_water_drop",
+                        {
+                            "enabled": True
+                        }
+                )
+        )
 
         # moving map widget
 
@@ -575,7 +575,7 @@ def main() -> None:
     kill_action = QtGui.QAction("Kill Motors")
     kill_action.triggered.connect(
             lambda: w.main_connection_widget.mqtt_connection_widget.mqtt_client.publish(
-                    "avr/kill", "", qos = 2
+                    "avr/kill", "", qos=2
             )
     )
     kill_action.setEnabled(False)
@@ -594,7 +594,7 @@ def main() -> None:
 
     w.main_connection_widget.mqtt_connection_widget.connection_state.connect(
             lambda state: w.main_connection_widget.mqtt_connection_widget.mqtt_client.publish(
-                    "avr/status/request_update", "", qos = 2
+                    "avr/status/request_update", "", qos=2
             ) if state == ConnectionState.connected else None
     )
 
@@ -611,15 +611,15 @@ def on_message(topic: str, payload: str | dict) -> None:
     if "avr/gui/sound/" in topic:
         filename = topic[len("avr/gui/sound/"):]
         if os.path.isfile(f"assets/sound/{filename}.wav"):
-            playsound(f"assets/sound/{filename}.wav", block = False)
+            playsound(f"assets/sound/{filename}.wav", block=False)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
             "--test-bundle",
-            action = "store_true",
-            help = "Immediately exit the application with exit code 0, to test bundling",
+            action="store_true",
+            help="Immediately exit the application with exit code 0, to test bundling",
     )
     args = parser.parse_args()
 
