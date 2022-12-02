@@ -42,6 +42,8 @@ class Direction(Enum):
 
 
 class ThermalView(QtWidgets.QWidget):
+    update_frame = QtCore.Signal(QtGui.QPixmap)
+
     def __init__(self, parent: QtWidgets.QWidget, zmq_client: ZMQClient) -> None:
         super().__init__(parent)
 
@@ -159,7 +161,9 @@ class ThermalView(QtWidgets.QWidget):
         #         )
         #     y += 1
         # cv2.imwrite("hello.png", frame)
-        self.view.setPixmap(stream.convert_cv_qt(frame, (self.view.width(), self.view.height())))
+        pixmap = stream.convert_cv_qt(frame, (self.view.width(), self.view.height()))
+        self.view.setPixmap(pixmap)
+        self.update_frame.emit(pixmap)
 
 
 class JoystickWidget(BaseTabWidget):
@@ -225,7 +229,7 @@ class JoystickWidget(BaseTabWidget):
         """
         ss = time.time()
         timesince = ss - self.last_time
-        if timesince >= 0.25:
+        if timesince >= 0.3 or 98 < self.current_x < 102 or 98 < self.current_y < 102:
             if not self.relative_movement:
                 # y_reversed = 100 - self.current_y
                 y_reversed = self.current_y
@@ -327,7 +331,7 @@ class JoystickWidget(BaseTabWidget):
         self.update_servos()
 
     def center_gimbal(self) -> None:
-        self.send_message("avr/gimbal/center", "")
+        self.send_message("avr/gimbal/center", "{}")
 
     def set_pos(self, x: float, y: float) -> None:
         if self.controller_enabled:
@@ -358,7 +362,7 @@ class ThermalViewControlWidget(BaseTabWidget):
         self.auto_checkbox = None
         self.last_fire = 0
         self.joystick = None
-        self.viewer = None
+        self.viewer: ThermalView | None = None
         self.streaming_checkbox = None
         self.setWindowTitle("Thermal View/Control")
 

@@ -14,6 +14,8 @@ def map_value(
 
 
 class WaterDropWidget(BaseTabWidget):
+    update_position = QtCore.Signal(int)
+
     def __init__(self, parent: QtWidgets.QWidget, zmq_client: ZMQClient) -> None:
         super().__init__(parent)
 
@@ -102,17 +104,21 @@ class WaterDropWidget(BaseTabWidget):
 
     def set_bpu_slider(self, percent: int) -> None:
         if not self.controller_enabled:
-            self.send_message("avr/pcm/set_servo_pct", {"servo": 1, "percent": percent})
+            us = int(map_value(percent, 0, 100, 500, 1000))
+            self.send_message("avr/pcm/set_servo_abs", {"servo": 1, "absolute": us})
             # self.zmq_client.zmq_publish("water_drop_set", {"percent": percent})
+            self.update_position.emit(percent)
 
     def set_bpu(self, value: int) -> None:
         ss = time.time()
         timesince = ss - self.last_time
-        if timesince >= 0.08 or (not self.last_closed and value == 0):
+        if timesince >= 0.01 or (not self.last_closed and value == 0):
             if self.controller_enabled:
+                us = int(map_value(value, 0, 255, 500, 1000))
                 percent = int(map_value(value, 0, 255, 0, 100))
-                self.send_message("avr/pcm/set_servo_pct", {"servo": 1, "percent": percent})
+                self.send_message("avr/pcm/set_servo_abs", {"servo": 1, "absolute": us})
                 # self.zmq_client.zmq_publish("water_drop_set", {"percent": percent})
+                self.update_position.emit(percent)
                 self.position_slider.setValue(value)
             self.last_time = ss
         self.last_closed = value == 0

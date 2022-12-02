@@ -53,6 +53,7 @@ CAMERAS = {
 
 
 class CameraViewWidget(BaseTabWidget):
+    update_frame = QtCore.Signal(QtGui.QPixmap)
     update_signal = QtCore.Signal(np.ndarray)
     change_streaming = QtCore.Signal(bool)
     streaming_changed = QtCore.Signal(bool)
@@ -159,7 +160,7 @@ class CameraViewWidget(BaseTabWidget):
 
         self.set_camera_info(list(CAMERAS.values())[0])
 
-        # self.change_streaming.connect(self.set_streaming)
+        self.change_streaming.connect(self.set_streaming)
 
         self.video_menu = QtWidgets.QMenu("Video")
 
@@ -175,7 +176,9 @@ class CameraViewWidget(BaseTabWidget):
         self.video_menu.addAction(self.video_menu_auto)
 
     def update_image(self, frame: np.ndarray) -> None:
-        self.view.setPixmap(stream.convert_cv_qt(frame, (self.view.width(), self.view.height())))
+        pixmap = stream.convert_cv_qt(frame, (self.view.width(), self.view.height()))
+        self.view.setPixmap(pixmap)
+        self.update_frame.emit(pixmap)
 
     def set_auto_select(self, enabled: bool) -> None:
         self.auto_select = enabled

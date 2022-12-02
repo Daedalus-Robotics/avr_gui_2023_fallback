@@ -113,7 +113,7 @@ class MainWindow(QtWidgets.QWidget):
     controller_cross = QtCore.Signal(bool)
     controller_triangle = QtCore.Signal(bool)
     controller_square = QtCore.Signal(bool)
-    controller_lb = QtCore.Signal(bool)
+    controller_lb = QtCore.Signal()
     controller_rb = QtCore.Signal(bool)
     controller_lt = QtCore.Signal(int)
     controller_rt = QtCore.Signal()
@@ -380,17 +380,17 @@ class MainWindow(QtWidgets.QWidget):
                 self.water_drop_widget.set_bpu
         )
         self.controller_touchBtn.connect(
-                lambda: self.water_drop_widget.zmq_client.zmq_publish(
+                lambda: self.main_connection_widget.mqtt_connection_widget.mqtt_client.publish(
                         "avr/autonomy/kill",
                         ""
                 )
         )
-        self.controller_rb.connect(
-                lambda: self.water_drop_widget.zmq_client.zmq_publish(
+        self.controller_lb.connect(
+                lambda: self.main_connection_widget.mqtt_connection_widget.mqtt_client.publish(
                         "avr/autonomy/set_auto_water_drop",
-                        {
+                        json.dumps({
                             "enabled": True
-                        }
+                        })
                 )
         )
 
@@ -432,6 +432,24 @@ class MainWindow(QtWidgets.QWidget):
 
         self.heads_up_widget.emit_message.connect(
                 self.main_connection_widget.mqtt_connection_widget.mqtt_client.publish
+        )
+
+        self.heads_up_widget.zed_pane.toggle_connection.connect(
+                lambda: self.camera_view_widget.change_streaming.emit(
+                        not self.camera_view_widget.is_connected
+                )
+        )
+
+        self.camera_view_widget.update_frame.connect(
+                self.heads_up_widget.zed_pane.update_frame.emit
+        )
+
+        self.thermal_view_control_widget.viewer.update_frame.connect(
+                self.heads_up_widget.thermal_pane.update_frame.emit
+        )
+
+        self.water_drop_widget.update_position.connect(
+                self.heads_up_widget.water_pane.move_dropper.emit
         )
 
         # set initial state
@@ -530,7 +548,7 @@ def main() -> None:
         controller.cross.on_state.register(w.controller_cross.emit)
         controller.triangle.on_state.register(w.controller_triangle.emit)
         controller.square.on_state.register(w.controller_square.emit)
-        controller.left_bumper.on_state.register(w.controller_lb.emit)
+        controller.left_bumper.on_press.register(w.controller_lb.emit)
         controller.right_bumper.on_state.register(w.controller_rb.emit)
         controller.left_trigger.on_pos.register(w.controller_lt.emit)
         controller.right_trigger.on_press.register(w.controller_rt.emit)
