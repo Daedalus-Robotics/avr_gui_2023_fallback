@@ -418,38 +418,44 @@ class MainWindow(QtWidgets.QWidget):
 
         # heads up display widget
 
-        self.heads_up_widget = HeadsUpDisplayWidget(self)
+        self.heads_up_widget = HeadsUpDisplayWidget(
+                self.main_connection_widget.mqtt_connection_widget.mqtt_client,
+                self
+        )
         self.heads_up_widget.build()
         self.heads_up_widget.pop_in.connect(self.tabs.pop_in)
         self.tabs.addTab(
                 self.heads_up_widget,
                 self.heads_up_widget.windowTitle(),
         )
-
         self.main_connection_widget.mqtt_connection_widget.mqtt_client.message.connect(
                 self.heads_up_widget.process_message
         )
-
         self.heads_up_widget.emit_message.connect(
                 self.main_connection_widget.mqtt_connection_widget.mqtt_client.publish
         )
-
         self.heads_up_widget.zed_pane.toggle_connection.connect(
                 lambda: self.camera_view_widget.change_streaming.emit(
                         not self.camera_view_widget.is_connected
                 )
         )
-
         self.camera_view_widget.update_frame.connect(
                 self.heads_up_widget.zed_pane.update_frame.emit
         )
-
         self.thermal_view_control_widget.viewer.update_frame.connect(
                 self.heads_up_widget.thermal_pane.update_frame.emit
         )
-
         self.water_drop_widget.update_position.connect(
                 self.heads_up_widget.water_pane.move_dropper.emit
+        )
+        self.vmc_telemetry_widget.voltage_update.connect(
+                self.heads_up_widget.telemetry_pane.update_battery.emit
+        )
+        self.vmc_telemetry_widget.armed_update.connect(
+                self.heads_up_widget.telemetry_pane.update_armed.emit
+        )
+        self.vmc_telemetry_widget.mode_update.connect(
+                self.heads_up_widget.telemetry_pane.update_mode.emit
         )
 
         # set initial state

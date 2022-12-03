@@ -28,6 +28,9 @@ class VMCTelemetryWidget(BaseTabWidget):
     # is already published there.
     armed_state = QtCore.Signal(bool)
     set_autonomous = QtCore.Signal(bool)
+    voltage_update = QtCore.Signal(float)
+    armed_update = QtCore.Signal(str)
+    mode_update = QtCore.Signal(str)
 
     def __init__(self, parent: QtWidgets.QWidget, controller) -> None:
         super().__init__(parent)
@@ -145,10 +148,10 @@ class VMCTelemetryWidget(BaseTabWidget):
         # lat, lon, alt row
         loc_lla_layout = QtWidgets.QHBoxLayout()
 
-        self.loc_lat_line_edit = DisplayLineEdit("", round_digits = 8)
+        self.loc_lat_line_edit = DisplayLineEdit("", round_digits=8)
         loc_lla_layout.addWidget(self.loc_lat_line_edit)
 
-        self.loc_lon_line_edit = DisplayLineEdit("", round_digits = 8)
+        self.loc_lon_line_edit = DisplayLineEdit("", round_digits=8)
         loc_lla_layout.addWidget(self.loc_lon_line_edit)
 
         self.loc_alt_line_edit = DisplayLineEdit("")
@@ -293,7 +296,7 @@ class VMCTelemetryWidget(BaseTabWidget):
                         True,
                         """This will shutdown the vehicle management computer.
                         This means that you have to unplug it and re plug it to restart it again.""",
-                        lambda: self.send_message("avr/shutdown", "", qos = 2)
+                        lambda: self.send_message("avr/shutdown", "", qos=2)
                 )
         )
 
@@ -344,7 +347,7 @@ class VMCTelemetryWidget(BaseTabWidget):
                         self.send_message("avr/gui/sound/beep", {})
                         Toast.get().send_message.emit("The vmc is shutting down!", 2.0)
 
-    def restart_service(self, service: str | None, show_dialog: bool, message: str = "", callback = None) -> None:
+    def restart_service(self, service: str | None, show_dialog: bool, message: str = "", callback=None) -> None:
         do_reset = True
         if show_dialog:
             if '\n' in message:
@@ -373,7 +376,7 @@ class VMCTelemetryWidget(BaseTabWidget):
                 do_reset = False
         if do_reset:
             if callback is None:
-                self.send_message(f"avr/status/restart/{service}", {}, qos = 2)
+                self.send_message(f"avr/status/restart/{service}", {}, qos=2)
             else:
                 callback()
 
@@ -423,11 +426,13 @@ class VMCTelemetryWidget(BaseTabWidget):
             self.send_message("avr/gui/sound/battery_alert", {})
             Toast.get().send_message.emit("Low battery!", 3.0)
         self.battery_percent_bar.setValue(int(soc))
-        self.battery_voltage_label.setText(f"{round(payload['voltage'], 4)} Volts")
+        voltage = round(payload['voltage'], 4)
+        self.voltage_update.emit(voltage)
+        self.battery_voltage_label.setText(f"{voltage} Volts")
 
         # this is required to change the progress bar color as the value changes
         color = smear_color(
-                (135, 0, 16), (11, 135, 0), value = soc, min_value = 0, max_value = 100
+                (135, 0, 16), (11, 135, 0), value=soc, min_value=0, max_value=100
         )
 
         stylesheet = f"""
@@ -460,8 +465,12 @@ class VMCTelemetryWidget(BaseTabWidget):
         if self.armed is not self.last_armed:
             self.armed_state.emit(self.armed)
 
-        self.armed_label.setText(wrap_text(text, color))
-        self.flight_mode_label.setText(payload["mode"])
+        armed_text = wrap_text(text, color)
+        self.armed_update.emit(armed_text)
+        self.armed_label.setText(armed_text)
+        mode_text = payload["mode"]
+        self.mode_update.emit(mode_text)
+        self.flight_mode_label.setText(mode_text)
 
     def update_local_location(self, payload: AvrFcmLocationLocalPayload) -> None:
         """

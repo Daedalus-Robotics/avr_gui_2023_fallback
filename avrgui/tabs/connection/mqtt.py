@@ -32,6 +32,7 @@ class MQTTClient(QtCore.QObject):
         super().__init__()
 
         self.client = mqtt.Client()
+        self.client.max_inflight_messages_set(10)
         self.client.on_connect = self.on_connect
         self.client.on_message = self.on_message
         self.client.on_disconnect = self.on_disconnect
@@ -82,7 +83,7 @@ class MQTTClient(QtCore.QObject):
 
         try:
             # try to connect to MQTT server
-            self.client.connect(host = host, port = port, keepalive = 60)
+            self.client.connect(host=host, port=port, keepalive=60)
             self.client.loop_start()
 
             # save settings

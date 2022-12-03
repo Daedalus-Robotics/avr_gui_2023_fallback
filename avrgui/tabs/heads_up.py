@@ -8,6 +8,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from avrgui.lib import utils
 from avrgui.lib.graphics_label import GraphicsLabel
 from avrgui.tabs.base import BaseTabWidget
+from avrgui.tabs.connection.mqtt import MQTTClient
 
 RED_COLOR = "red"
 LIGHT_BLUE_COLOR = "#0091ff"
@@ -22,8 +23,10 @@ STATE_LOOKUP = {
 
 
 class HeadsUpDisplayWidget(BaseTabWidget):
-    def __init__(self, parent: QtWidgets.QWidget) -> None:
+    def __init__(self, client: MQTTClient, parent: QtWidgets.QWidget) -> None:
         super().__init__(parent)
+
+        self.client = client
 
         self.setWindowTitle("HUD")
 
@@ -31,6 +34,7 @@ class HeadsUpDisplayWidget(BaseTabWidget):
         self.thermal_pane: ThermalCameraPane | None = None
         self.water_pane: WaterDropPane | None = None
         self.gimbal_pane: GimbalPane | None = None
+        self.telemetry_pane: TelemetryPane | None = None
 
     def build(self) -> None:
         layout = QtWidgets.QGridLayout()
@@ -54,11 +58,14 @@ class HeadsUpDisplayWidget(BaseTabWidget):
         control_layout = QtWidgets.QVBoxLayout()
         control_groupbox.setLayout(control_layout)
 
-        self.water_pane = WaterDropPane(self)
+        self.water_pane = WaterDropPane(self.client, self)
         control_layout.addWidget(self.water_pane)
 
         self.gimbal_pane = GimbalPane(self)
         control_layout.addWidget(self.gimbal_pane)
+
+        self.telemetry_pane = TelemetryPane(self)
+        control_layout.addWidget(self.telemetry_pane)
 
         layout.addWidget(control_groupbox, 0, 1)
 
@@ -91,7 +98,7 @@ class ZEDCameraPane(QtWidgets.QWidget):
         self.view.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.MinimumExpanding)
         self.view.sizePolicy().setHeightForWidth(True)
         self.view.setPixmap(QtGui.QPixmap("assets/blank720.png"))
-        self.view.setFixedWidth(300)
+        self.view.setFixedWidth(200)
         zed_layout.addWidget(self.view)
 
         connection_button = QtWidgets.QPushButton("Toggle Connection")
@@ -123,7 +130,7 @@ class ThermalCameraPane(QtWidgets.QWidget):
         self.view.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
         self.view.sizePolicy().setHeightForWidth(True)
         self.view.setPixmap(QtGui.QPixmap("assets/blank_square.png"))
-        self.view.setFixedWidth(300)
+        self.view.setMinimumSize(200, 200)
         thermal_layout.addWidget(self.view)
 
         layout.addWidget(thermal_groupbox)
@@ -134,10 +141,12 @@ class ThermalCameraPane(QtWidgets.QWidget):
 class WaterDropPane(QtWidgets.QWidget):
     move_dropper = QtCore.Signal(int)
 
-    def __init__(self, parent: QtWidgets.QWidget) -> None:
+    def __init__(self, client: MQTTClient, parent: QtWidgets.QWidget) -> None:
         super().__init__(parent)
         self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.MinimumExpanding)
-        self.setFixedHeight(175)
+        # self.setFixedHeight(175)
+
+        self.client = client
 
         layout = QtWidgets.QVBoxLayout()
         self.setLayout(layout)
@@ -170,6 +179,77 @@ class WaterDropPane(QtWidgets.QWidget):
         water_drop_layout.addRow("Locked Tag:", self.locked_tag_label)
         water_drop_layout.addRow("Countdown:", self.countdown_label)
         water_drop_layout.addRow("Visible Tags:", self.tags_label)
+
+        close_radio_buttons: list[QtWidgets.QRadioButton | None] = [None] * 6
+        far_radio_buttons: list[QtWidgets.QRadioButton | None] = [None] * 7
+
+        self.textron_close_1 = QtWidgets.QRadioButton()
+        self.textron_close_2 = QtWidgets.QRadioButton()
+        self.textron_close_3 = QtWidgets.QRadioButton()
+        close_radio_buttons[0:3] = [self.textron_close_3, self.textron_close_2, self.textron_close_1]
+        self.textron_close_2.setDisabled(True)
+        self.textron_close_3.setDisabled(True)
+        self.textron_close_1.toggled.connect(
+                lambda: self.update_dropping_tag(2)
+        )
+
+        self.textron_far_1 = QtWidgets.QRadioButton()
+        self.textron_far_2 = QtWidgets.QRadioButton()
+        self.textron_far_3 = QtWidgets.QRadioButton()
+        far_radio_buttons[0:3] = [self.textron_far_3, self.textron_far_2, self.textron_far_1]
+        self.textron_far_2.setDisabled(True)
+        self.textron_far_1.toggled.connect(
+                lambda: self.update_dropping_tag(1)
+        )
+        self.textron_far_3.toggled.connect(
+                lambda: self.update_dropping_tag(0)
+        )
+
+        self.residential_close_1 = QtWidgets.QRadioButton()
+        self.residential_close_2 = QtWidgets.QRadioButton()
+        self.residential_close_3 = QtWidgets.QRadioButton()
+        close_radio_buttons[3:] = [self.residential_close_1, self.residential_close_2, self.residential_close_3]
+        self.residential_close_2.setDisabled(True)
+        self.residential_close_1.toggled.connect(
+                lambda: self.update_dropping_tag(4)
+        )
+        self.residential_close_3.toggled.connect(
+                lambda: self.update_dropping_tag(5)
+        )
+
+        self.residential_far_1 = QtWidgets.QRadioButton()
+        self.residential_far_2 = QtWidgets.QRadioButton()
+        self.residential_far_3 = QtWidgets.QRadioButton()
+        far_radio_buttons[3:6] = [self.residential_far_1, self.residential_far_2, self.residential_far_3]
+        self.residential_far_2.setDisabled(True)
+        self.residential_far_3.setDisabled(True)
+        self.residential_far_1.toggled.connect(
+                lambda: self.update_dropping_tag(3)
+        )
+
+        self.none_button = QtWidgets.QRadioButton()
+        print(far_radio_buttons)
+        far_radio_buttons[6] = self.none_button
+        self.none_button.toggled.connect(
+                lambda: self.update_dropping_tag(-1)
+        )
+
+        radio_button_widget = QtWidgets.QWidget()
+        radio_button_layout = QtWidgets.QGridLayout()
+        radio_button_widget.setLayout(radio_button_layout)
+
+        index = 0
+        for button in far_radio_buttons:
+            if button is not None:
+                radio_button_layout.addWidget(button, 0, index)
+            index += 1
+        index = 0
+        for button in close_radio_buttons:
+            if button is not None:
+                radio_button_layout.addWidget(button, 1, index)
+            index += 1
+
+        water_drop_layout.addWidget(radio_button_widget)
 
         layout.addWidget(water_drop_groupbox)
 
@@ -230,6 +310,17 @@ class WaterDropPane(QtWidgets.QWidget):
                     f"{self.format_visible_tags(tag_ids)} (Updated at {self.get_formatted_time()})"
             )
 
+    def update_dropping_tag(self, tag_id: int) -> None:
+        self.client.publish(
+                "avr/autonomy/set_drop_tag",
+                json.dumps(
+                        {
+                            "id": tag_id
+                        }
+                ),
+                qos=2
+        )
+
     @staticmethod
     def format_auto_state(state: int) -> str:
         color = RED_COLOR
@@ -263,7 +354,7 @@ class WaterDropPane(QtWidgets.QWidget):
     def format_visible_tags(tag_ids: str) -> str:
         if len(tag_ids) < 1:
             return COLORED_NONE_TEXT
-        return f"<span style='color:{TIME_COLOR};'>{tag_ids}</span>"
+        return f"<span style='color:{LIGHT_BLUE_COLOR};'>{tag_ids}</span>"
 
     @staticmethod
     def get_formatted_time() -> str:
@@ -275,13 +366,13 @@ class WaterDropPane(QtWidgets.QWidget):
 class GimbalPane(QtWidgets.QWidget):
     def __init__(self, parent: QtWidgets.QWidget) -> None:
         super().__init__(parent)
-        self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+        self.setSizePolicy(QtWidgets.QSizePolicy.MinimumExpanding, QtWidgets.QSizePolicy.MinimumExpanding)
 
         layout = QtWidgets.QVBoxLayout()
         self.setLayout(layout)
 
         gimbal_groupbox = QtWidgets.QGroupBox("Gimbal")
-        gimbal_groupbox.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.MinimumExpanding)
+        gimbal_groupbox.setSizePolicy(QtWidgets.QSizePolicy.MinimumExpanding, QtWidgets.QSizePolicy.MinimumExpanding)
         gimbal_layout = QtWidgets.QGridLayout()
         gimbal_groupbox.setLayout(gimbal_layout)
         gimbal_groupbox.setMinimumWidth(100)
@@ -290,7 +381,7 @@ class GimbalPane(QtWidgets.QWidget):
         self.yaw_dial.setWrapping(True)
         self.yaw_dial.setRange(-100, 100)
         self.yaw_dial.setValue(0)
-        self.yaw_dial.setMaximumWidth(300)
+        self.yaw_dial.setMaximumWidth(200)
         self.yaw_dial.setStyleSheet("border: 4px solid white ; border-radius: 82px;")
         self.yaw_dial.setDisabled(True)
         gimbal_layout.addWidget(self.yaw_dial, 0, 0, 0, 1)
@@ -319,3 +410,44 @@ class GimbalPane(QtWidgets.QWidget):
                 pass
             self.yaw_dial.setValue(x)
             self.pitch_bar.setValue(y)
+
+
+class TelemetryPane(QtWidgets.QWidget):
+    update_battery = QtCore.Signal(float)
+    update_armed = QtCore.Signal(str)
+    update_mode = QtCore.Signal(str)
+
+    def __init__(self, parent: QtWidgets.QWidget) -> None:
+        super(TelemetryPane, self).__init__(parent)
+
+        layout = QtWidgets.QVBoxLayout()
+        self.setLayout(layout)
+
+        telemetry_groupbox = QtWidgets.QGroupBox("Telemetry")
+        telemetry_groupbox.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Policy.Minimum)
+        telemetry_layout = QtWidgets.QFormLayout()
+        telemetry_groupbox.setLayout(telemetry_layout)
+        # telemetry_groupbox.setMinimumWidth(100)
+
+        self.battery_label = QtWidgets.QLabel(COLORED_NONE_TEXT)
+        self.armed_label = QtWidgets.QLabel(COLORED_NONE_TEXT)
+        self.mode_label = QtWidgets.QLabel(COLORED_NONE_TEXT)
+        telemetry_layout.addRow("Battery:", self.battery_label)
+        telemetry_layout.addRow("Armed:", self.armed_label)
+        telemetry_layout.addRow("Flight Mode:", self.mode_label)
+
+        layout.addWidget(telemetry_groupbox)
+
+        self.update_battery.connect(
+                lambda voltage: self.battery_label.setText(
+                        f"<span style='color:{LIGHT_BLUE_COLOR if voltage > 14 else RED_COLOR};'>{voltage} Volts</span>"
+                )
+        )
+        self.update_armed.connect(
+                self.armed_label.setText
+        )
+        self.update_mode.connect(
+                lambda text: self.mode_label.setText(
+                        f"<span style='color:{GREEN_COLOR};'>{text}</span>"
+                )
+        )
