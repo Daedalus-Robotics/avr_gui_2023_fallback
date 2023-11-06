@@ -441,15 +441,15 @@ class ThermalViewControlWidget(BaseTabWidget):
         )
 
         fire_laser_button.clicked.connect(
-                lambda: self.client.emit("/laser/fire", {})
+                lambda: self.client.emit("/laser/fire~~request", {})
         )
 
         laser_on_button.clicked.connect(
-                lambda: self.client.emit("/laser/set_loop", {"data": True})
+                lambda: self.client.emit("/laser/set_loop~~request", {"data": True})
         )
 
         laser_off_button.clicked.connect(
-                lambda: self.client.emit("/laser/set_loop", {"data": False})
+                lambda: self.client.emit("/laser/set_loop~~request", {"data": False})
         )
 
         # kill_button.clicked.connect(
@@ -500,14 +500,14 @@ class ThermalViewControlWidget(BaseTabWidget):
             return
         self.last_fire = ms
 
-        self.client.emit("/laser/fire", {})
+        self.client.emit("/laser/fire~~request", {})
         # self.zmq_client.zmq_publish("gimbal_fire", "")
 
     def on_controller_rb(self, state: bool) -> None:
         if state:
-            self.client.emit("/laser/set_loop", {"data": True})
+            self.client.emit("/laser/set_loop~~request", {"data": True})
         else:
-            self.client.emit("/laser/set_loop", {"data": False})
+            self.client.emit("/laser/set_loop~~request", {"data": False})
 
     def on_controller_circle(self, state: bool) -> None:
         self.auto_checkbox.setChecked(state)
