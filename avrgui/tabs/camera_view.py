@@ -12,7 +12,7 @@ from avrgui.lib.enums import ConnectionState
 from avrgui.lib.graphics_label import GraphicsLabel
 from avrgui.lib.widgets import IntLineEdit
 from avrgui.tabs.base import BaseTabWidget
-from avrgui.tabs.connection.mqtt import MQTTConnectionWidget
+from avrgui.tabs.connection.socketio import SocketIOConnectionWidget
 
 BUFF_SIZE = 65536
 socket.setdefaulttimeout(1)
@@ -221,7 +221,7 @@ class CameraViewWidget(BaseTabWidget):
         if enabled is None:
             enabled = not self.is_connected
         if enabled:
-            hostname = MQTTConnectionWidget.current_host
+            hostname = SocketIOConnectionWidget.current_host
             try:
                 port = int(self.port_line_edit.text())
             except ValueError:

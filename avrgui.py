@@ -13,13 +13,10 @@ from avrgui.lib.qt_icon import set_icon
 from avrgui.lib.toast import Toast
 from avrgui.lib.water_drop_popup import WaterDropPopup
 # from avrgui.tabs.autonomy import AutonomyWidget
-from avrgui.tabs.camera_view import CameraViewWidget
+# from avrgui.tabs.camera_view import CameraViewWidget
 from avrgui.tabs.connection.main import MainConnectionWidget
 from avrgui.tabs.heads_up import HeadsUpDisplayWidget
 from avrgui.tabs.moving_map import MovingMapWidget
-from avrgui.tabs.mqtt_debug import MQTTDebugWidget
-# from avrgui.tabs.mqtt_logger import MQTTLoggerWidget
-from avrgui.tabs.pcc_tester import PCCTesterWidget
 from avrgui.tabs.thermal_view_control import ThermalViewControlWidget
 # from avrgui.tabs.vmc_control import VMCControlWidget
 from avrgui.tabs.vmc_telemetry import VMCTelemetryWidget
@@ -176,85 +173,34 @@ class MainWindow(QtWidgets.QWidget):
                 self.main_connection_widget, self.main_connection_widget.windowTitle()
         )
 
-        self.main_connection_widget.mqtt_connection_widget.connection_state.connect(
+        self.main_connection_widget.socketio_connection_widget.connection_state.connect(
                 self.set_mqtt_connected_state
         )
-        self.main_connection_widget.serial_connection_widget.connection_state.connect(
-                self.set_serial_connected_state
-        )
 
-        self.menu_bar.addMenu(self.main_connection_widget.mqtt_connection_widget.mqtt_menu)
+        self.menu_bar.addMenu(self.main_connection_widget.socketio_connection_widget.socketio_menu)
 
-        def toast_mqtt(topic, message) -> None:
-            if topic == "avr/gui/toast":
-                try:
-                    message = json.loads(message)
-                    text = message.get("text", "")
-                    timeout = message.get("timeout", 1)
-                    self.toast.show_message(text, timeout)
-                except json.JSONDecodeError:
-                    pass
+        # def toast_mqtt(topic, message) -> None:
+        #     if topic == "avr/gui/toast":
+        #         try:
+        #             message = json.loads(message)
+        #             text = message.get("text", "")
+        #             timeout = message.get("timeout", 1)
+        #             self.toast.show_message(text, timeout)
+        #         except json.JSONDecodeError:
+        #             pass
 
-        self.main_connection_widget.mqtt_connection_widget.mqtt_client.message.connect(
-                toast_mqtt
-        )
-
-        # pcc tester widget
-
-        self.pcc_tester_widget = PCCTesterWidget(
-                self, self.main_connection_widget.serial_connection_widget.serial_client
-        )
-        self.pcc_tester_widget.build()
-        self.pcc_tester_widget.pop_in.connect(self.tabs.pop_in)
-        self.tabs.addTab(self.pcc_tester_widget, self.pcc_tester_widget.windowTitle())
-
-        # mqtt debug widget
-
-        self.mqtt_debug_widget = MQTTDebugWidget(self)
-        self.mqtt_debug_widget.build()
-        self.mqtt_debug_widget.pop_in.connect(self.tabs.pop_in)
-        self.tabs.addTab(self.mqtt_debug_widget, self.mqtt_debug_widget.windowTitle())
-
-        self.main_connection_widget.mqtt_connection_widget.mqtt_client.message.connect(
-                self.mqtt_debug_widget.process_message
-        )
-        self.mqtt_debug_widget.emit_message.connect(
-                self.main_connection_widget.mqtt_connection_widget.mqtt_client.publish
-        )
-        # self.main_connection_widget.zmq_connection_widget.zmq_client.connection_state.connect(
-        #         self.mqtt_debug_widget.zmq_send_button.setEnabled
-        # )
-        self.mqtt_debug_widget.zmq_send_button.setEnabled(True)
-        self.mqtt_debug_widget.send_zmq.connect(
-                lambda message: self.main_connection_widget.zmq_connection_widget.publish(message[0], message[1])
-        )
-
-        # mqtt logger widget
-
-        # self.mqtt_logger_widget = MQTTLoggerWidget(self)
-        # self.mqtt_logger_widget.build()
-        # self.mqtt_logger_widget.pop_in.connect(self.tabs.pop_in)
-        # self.tabs.addTab(self.mqtt_logger_widget, self.mqtt_logger_widget.windowTitle())
-        #
-        # self.main_connection_widget.mqtt_connection_widget.mqtt_client.message.connect(
-        #         self.mqtt_logger_widget.process_message
+        # self.main_connection_widget.socketio_connection_widget.socketio_client.message.connect(
+        #         toast_mqtt
         # )
 
         # vmc telemetry widget
 
         self.vmc_telemetry_widget = VMCTelemetryWidget(self, controller)
+        self.vmc_telemetry_widget.client = self.main_connection_widget.socketio_connection_widget.socketio_client
         self.vmc_telemetry_widget.build()
         self.vmc_telemetry_widget.pop_in.connect(self.tabs.pop_in)
         self.tabs.addTab(
                 self.vmc_telemetry_widget, self.vmc_telemetry_widget.windowTitle()
-        )
-
-        self.main_connection_widget.mqtt_connection_widget.mqtt_client.message.connect(
-                self.vmc_telemetry_widget.process_message
-        )
-
-        self.vmc_telemetry_widget.emit_message.connect(
-                self.main_connection_widget.mqtt_connection_widget.mqtt_client.publish
         )
 
         if controller is not None:
@@ -265,50 +211,29 @@ class MainWindow(QtWidgets.QWidget):
                     set_mic_led
             )
 
-        self.controller_ps.connect(
-                lambda: self.vmc_telemetry_widget.restart_service(
-                        None,
-                        True,
-                        """This will shutdown the vehicle management computer.
-                        This means that you have to unplug it and re plug it to restart it again.""",
-                        lambda: self.vmc_telemetry_widget.send_message("avr/shutdown", "", qos=2)
-                )
-        )
+        # self.controller_ps.connect(
+        #         lambda: self.vmc_telemetry_widget.restart_service(
+        #                 None,
+        #                 True,
+        #                 """This will shutdown the vehicle management computer.
+        #                 This means that you have to unplug it and re plug it to restart it again.""",
+        #                 lambda: self.vmc_telemetry_widget.send_message("avr/shutdown", "", qos=2)
+        #         )
+        # )
 
         self.controller_mic.connect(
                 lambda: self.vmc_telemetry_widget.toggle_arm()
         )
 
-        # vmc control widget
-
-        # self.vmc_control_widget = VMCControlWidget(self)
-        # self.vmc_control_widget.build()
-        # self.vmc_control_widget.pop_in.connect(self.tabs.pop_in)
-        # self.tabs.addTab(self.vmc_control_widget, self.vmc_control_widget.windowTitle())
-        #
-        # self.vmc_control_widget.emit_message.connect(
-        #         self.main_connection_widget.mqtt_connection_widget.mqtt_client.publish
-        # )
-
         # thermal view widget
 
-        self.thermal_view_control_widget = ThermalViewControlWidget(
-                self,
-                self.main_connection_widget.zmq_connection_widget.zmq_client
-        )
+        self.thermal_view_control_widget = ThermalViewControlWidget(self)
+        self.thermal_view_control_widget.client = self.main_connection_widget.socketio_connection_widget.socketio_client
         self.thermal_view_control_widget.build()
         self.thermal_view_control_widget.pop_in.connect(self.tabs.pop_in)
         self.tabs.addTab(
                 self.thermal_view_control_widget,
                 self.thermal_view_control_widget.windowTitle(),
-        )
-
-        self.main_connection_widget.mqtt_connection_widget.mqtt_client.message_bytes.connect(
-                self.thermal_view_control_widget.process_message_bytes
-        )
-
-        self.thermal_view_control_widget.emit_message.connect(
-                self.main_connection_widget.mqtt_connection_widget.mqtt_client.publish
         )
 
         self.controller_r.connect(
@@ -333,34 +258,25 @@ class MainWindow(QtWidgets.QWidget):
 
         # camera view widget
 
-        self.camera_view_widget = CameraViewWidget(self)
-        self.camera_view_widget.build()
-        self.camera_view_widget.pop_in.connect(self.tabs.pop_in)
-        self.tabs.addTab(
-                self.camera_view_widget,
-                self.camera_view_widget.windowTitle(),
-        )
-
-        self.main_connection_widget.mqtt_connection_widget.mqtt_client.message.connect(
-                self.camera_view_widget.process_message
-        )
-
-        self.camera_view_widget.emit_message.connect(
-                self.main_connection_widget.mqtt_connection_widget.mqtt_client.publish
-        )
-
-        self.main_connection_widget.mqtt_connection_widget.connection_state.connect(
-                self.camera_view_widget.mqtt_connection_state
-        )
-
-        self.menu_bar.addMenu(self.camera_view_widget.video_menu)
+        # self.camera_view_widget = CameraViewWidget(self)
+        # self.camera_view_widget.client = self.main_connection_widget.socketio_connection_widget.socketio_client
+        # self.camera_view_widget.build()
+        # self.camera_view_widget.pop_in.connect(self.tabs.pop_in)
+        # self.tabs.addTab(
+        #         self.camera_view_widget,
+        #         self.camera_view_widget.windowTitle(),
+        # )
+        # 
+        # self.main_connection_widget.socketio_connection_widget.connection_state.connect(
+        #         self.camera_view_widget.mqtt_connection_state
+        # )
+        # 
+        # self.menu_bar.addMenu(self.camera_view_widget.video_menu)
 
         # water drop widget
 
-        self.water_drop_widget = WaterDropWidget(
-                self,
-                self.main_connection_widget.zmq_connection_widget.zmq_client
-        )
+        self.water_drop_widget = WaterDropWidget(self)
+        self.water_drop_widget.client = self.main_connection_widget.socketio_connection_widget.socketio_client
         self.water_drop_widget.build()
         self.water_drop_widget.pop_in.connect(self.tabs.pop_in)
         self.tabs.addTab(
@@ -368,25 +284,17 @@ class MainWindow(QtWidgets.QWidget):
                 self.water_drop_widget.windowTitle(),
         )
 
-        self.main_connection_widget.mqtt_connection_widget.mqtt_client.message.connect(
-                self.water_drop_widget.process_message
-        )
-
-        self.water_drop_widget.emit_message.connect(
-                self.main_connection_widget.mqtt_connection_widget.mqtt_client.publish
-        )
-
         self.controller_lt.connect(
-                self.water_drop_widget.set_bpu
+                self.water_drop_widget.trigger_bpu
         )
         self.controller_touchBtn.connect(
-                lambda: self.main_connection_widget.mqtt_connection_widget.mqtt_client.publish(
+                lambda: self.main_connection_widget.socketio_connection_widget.socketio_client.publish(
                         "avr/autonomy/kill",
                         ""
                 )
         )
         self.controller_lb.connect(
-                lambda: self.main_connection_widget.mqtt_connection_widget.mqtt_client.publish(
+                lambda: self.main_connection_widget.socketio_connection_widget.socketio_client.publish(
                         "avr/autonomy/set_auto_water_drop",
                         json.dumps({
                             "enabled": True
@@ -396,14 +304,10 @@ class MainWindow(QtWidgets.QWidget):
 
         # moving map widget
 
-        self.moving_map_widget = MovingMapWidget(self)
-        self.moving_map_widget.build()
-        self.moving_map_widget.pop_in.connect(self.tabs.pop_in)
-        self.tabs.addTab(self.moving_map_widget, self.moving_map_widget.windowTitle())
-
-        self.main_connection_widget.mqtt_connection_widget.mqtt_client.message.connect(
-                self.moving_map_widget.process_message
-        )
+        # self.moving_map_widget = MovingMapWidget(self)
+        # self.moving_map_widget.build()
+        # self.moving_map_widget.pop_in.connect(self.tabs.pop_in)
+        # self.tabs.addTab(self.moving_map_widget, self.moving_map_widget.windowTitle())
 
         # autonomy widget
 
@@ -411,15 +315,11 @@ class MainWindow(QtWidgets.QWidget):
         # self.autonomy_widget.build()
         # self.autonomy_widget.pop_in.connect(self.tabs.pop_in)
         # self.tabs.addTab(self.autonomy_widget, self.autonomy_widget.windowTitle())
-        #
-        # self.autonomy_widget.emit_message.connect(
-        #         self.main_connection_widget.mqtt_connection_widget.mqtt_client.publish
-        # )
 
         # heads up display widget
 
         self.heads_up_widget = HeadsUpDisplayWidget(
-                self.main_connection_widget.mqtt_connection_widget.mqtt_client,
+                self.main_connection_widget.socketio_connection_widget.socketio_client,
                 self
         )
         self.heads_up_widget.build()
@@ -428,20 +328,14 @@ class MainWindow(QtWidgets.QWidget):
                 self.heads_up_widget,
                 self.heads_up_widget.windowTitle(),
         )
-        self.main_connection_widget.mqtt_connection_widget.mqtt_client.message.connect(
-                self.heads_up_widget.process_message
-        )
-        self.heads_up_widget.emit_message.connect(
-                self.main_connection_widget.mqtt_connection_widget.mqtt_client.publish
-        )
         self.heads_up_widget.zed_pane.toggle_connection.connect(
                 lambda: self.camera_view_widget.change_streaming.emit(
                         not self.camera_view_widget.is_connected
                 )
         )
-        self.camera_view_widget.update_frame.connect(
-                self.heads_up_widget.zed_pane.update_frame.emit
-        )
+        # self.camera_view_widget.update_frame.connect(
+        #         self.heads_up_widget.zed_pane.update_frame.emit
+        # )
         self.thermal_view_control_widget.viewer.update_frame.connect(
                 self.heads_up_widget.thermal_pane.update_frame.emit
         )
@@ -467,14 +361,14 @@ class MainWindow(QtWidgets.QWidget):
 
         # list of widgets that are mqtt connected
         widgets = [
-            self.mqtt_debug_widget,
+            # self.mqtt_debug_widget,
             # self.mqtt_logger_widget,
             self.vmc_telemetry_widget,
             self.vmc_control_widget,
             self.thermal_view_control_widget,
-            self.camera_view_widget,
+            # self.camera_view_widget,
             self.water_drop_widget,
-            self.moving_map_widget,
+            # self.moving_map_widget,
             # self.autonomy_widget,
             self.heads_up_widget,
         ]
@@ -484,19 +378,17 @@ class MainWindow(QtWidgets.QWidget):
             idx = self.tabs.indexOf(widget)
             self.tabs.setTabEnabled(idx, self.mqtt_connected)
             if not self.mqtt_connected:
-                self.tabs.setTabToolTip(idx, "MQTT not connected")
+                self.tabs.setTabToolTip(idx, "SocketIO not connected")
             else:
                 self.tabs.setTabToolTip(idx, "")
 
         # clear widgets to a starting state
         if not self.mqtt_connected:
-            self.mqtt_debug_widget.clear()
-            # self.mqtt_logger_widget.clear()
             self.vmc_telemetry_widget.clear()
             self.thermal_view_control_widget.clear()
-            self.camera_view_widget.clear()
+            # self.camera_view_widget.clear()
             self.water_drop_widget.clear()
-            self.moving_map_widget.clear()
+            # self.moving_map_widget.clear()
             self.heads_up_widget.clear()
 
     def set_serial_connected_state(self, connection_state: ConnectionState) -> None:
@@ -507,10 +399,12 @@ class MainWindow(QtWidgets.QWidget):
         self.tabs.tab_bar.setTabVisible(idx, self.serial_connected)
         self.tabs.setTabEnabled(idx, self.serial_connected)
         if not self.serial_connected:
-            self.pcc_tester_widget.reset_all()
+
+            # self.pcc_tester_widget.reset_all()
             self.tabs.setTabToolTip(idx, "Serial not connected")
         else:
             self.tabs.setTabToolTip(idx, "")
+
 
     def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
         self.toast.window_resize_event(event)
@@ -520,7 +414,7 @@ class MainWindow(QtWidgets.QWidget):
         Override close event to close all connections.
         """
         if self.mqtt_connected:
-            self.main_connection_widget.mqtt_connection_widget.mqtt_client.logout()
+            self.main_connection_widget.socketio_connection_widget.socketio_client.logout()
 
         if self.serial_connected:
             self.main_connection_widget.serial_connection_widget.serial_client.logout()
@@ -580,35 +474,35 @@ def main() -> None:
             else:
                 controller.player_led.player_num = 0
 
-        w.main_connection_widget.mqtt_connection_widget.connection_state.connect(set_player_led)
+        w.main_connection_widget.socketio_connection_widget.connection_state.connect(set_player_led)
 
     d = QtWidgets.QMenu(w)
-    mqtt_action = QtGui.QAction("MQTT Disconnected")
-    mqtt_action.triggered.connect(w.main_connection_widget.mqtt_connection_widget.mqtt_client.logout)
-    mqtt_action.setEnabled(False)
-    w.main_connection_widget.mqtt_connection_widget.connection_state.connect(
-            lambda state: mqtt_action.setEnabled(state == ConnectionState.connected)
+    socketio_action = QtGui.QAction("SocketIO Disconnected")
+    socketio_action.triggered.connect(w.main_connection_widget.socketio_connection_widget.socketio_client.logout)
+    socketio_action.setEnabled(False)
+    w.main_connection_widget.socketio_connection_widget.connection_state.connect(
+            lambda state: socketio_action.setEnabled(state == ConnectionState.connected)
     )
-    w.main_connection_widget.mqtt_connection_widget.connection_state.connect(
-            lambda state: mqtt_action.setText(
-                    "Disconnect MQTT" if state == ConnectionState.connected else "MQTT Disconnected"
+    w.main_connection_widget.socketio_connection_widget.connection_state.connect(
+            lambda state: socketio_action.setText(
+                    "Disconnect SocketIO" if state == ConnectionState.connected else "SocketIO Disconnected"
             )
     )
-    d.addAction(mqtt_action)
+    d.addAction(socketio_action)
 
-    kill_action = QtGui.QAction("Kill Motors")
-    kill_action.triggered.connect(
-            lambda: w.main_connection_widget.mqtt_connection_widget.mqtt_client.publish(
-                    "avr/kill", "", qos=2
-            )
-    )
-    kill_action.setEnabled(False)
-    w.main_connection_widget.mqtt_connection_widget.connection_state.connect(
-            lambda state: kill_action.setEnabled(
-                    True if state == ConnectionState.connected else False
-            )
-    )
-    d.addAction(kill_action)
+    # kill_action = QtGui.QAction("Kill Motors")
+    # kill_action.triggered.connect(
+    #         lambda: w.main_connection_widget.socketio_connection_widget.socketio_client.publish(
+    #                 "avr/kill", "", qos=2
+    #         )
+    # )
+    # kill_action.setEnabled(False)
+    # w.main_connection_widget.socketio_connection_widget.connection_state.connect(
+    #         lambda state: kill_action.setEnabled(
+    #                 True if state == ConnectionState.connected else False
+    #         )
+    # )
+    # d.addAction(kill_action)
 
     controller_action = QtGui.QAction("Connect Controller")
     w.main_connection_widget.controller_connect_button.clicked.connect(
@@ -616,13 +510,11 @@ def main() -> None:
     )
     d.addAction(controller_action)
 
-    w.main_connection_widget.mqtt_connection_widget.connection_state.connect(
-            lambda state: w.main_connection_widget.mqtt_connection_widget.mqtt_client.publish(
-                    "avr/status/request_update", "", qos=2
-            ) if state == ConnectionState.connected else None
-    )
-
-    w.main_connection_widget.mqtt_connection_widget.mqtt_client.message.connect(on_message)
+    # w.main_connection_widget.socketio_connection_widget.connection_state.connect(
+    #         lambda state: w.main_connection_widget.socketio_connection_widget.socketio_client.publish(
+    #                 "avr/status/request_update", "", qos=2
+    #         ) if state == ConnectionState.connected else None
+    # )
 
     w.show()
     splash.finish(w)

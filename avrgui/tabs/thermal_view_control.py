@@ -1,21 +1,14 @@
-import json
 import math
 import time
 from enum import Enum, auto
 from typing import Any
 
 import colour
-import cv2
 import numpy as np
+import socketio
 from PySide6 import QtCore, QtGui, QtWidgets
-from bell.avr.mqtt.payloads import (
-    AvrPcmFireLaserPayload,
-    AvrPcmSetLaserOffPayload,
-    AvrPcmSetLaserOnPayload
-)
 
 from .base import BaseTabWidget
-from .connection.zmq import ZMQClient
 from ..lib import stream
 from ..lib.graphics_label import GraphicsLabel
 
@@ -44,10 +37,10 @@ class Direction(Enum):
 class ThermalView(QtWidgets.QWidget):
     update_frame = QtCore.Signal(QtGui.QPixmap)
 
-    def __init__(self, parent: QtWidgets.QWidget, zmq_client: ZMQClient) -> None:
+    def __init__(self, parent: QtWidgets.QWidget, client: socketio.Client) -> None:
         super().__init__(parent)
 
-        self.zmq_client = zmq_client
+        self.client = client
 
         # canvas size
         self.width_ = 300
@@ -167,10 +160,8 @@ class ThermalView(QtWidgets.QWidget):
 
 
 class JoystickWidget(BaseTabWidget):
-    def __init__(self, parent: QtWidgets.QWidget, controller_checkbox: QtWidgets.QCheckBox, zmq_client: ZMQClient) -> None:
+    def __init__(self, parent: QtWidgets.QWidget, controller_checkbox: QtWidgets.QCheckBox) -> None:
         super().__init__(parent)
-
-        self.zmq_client = zmq_client
 
         self.controller_checkbox = controller_checkbox
         self.setFixedSize(300, 300)
@@ -215,13 +206,14 @@ class JoystickWidget(BaseTabWidget):
         #             "y": y_servo
         #         }
         # )
-        self.zmq_client.zmq_publish(
-                "gimbal_pos",
-                {
-                    "x": x_servo,
-                    "y": y_servo
-                }
-        )
+        pass
+        # self.zmq_client.zmq_publish(
+        #         "gimbal_pos",
+        #         {
+        #             "x": x_servo,
+        #             "y": y_servo
+        #         }
+        # )
 
     def update_servos(self) -> None:
         """
@@ -256,13 +248,13 @@ class JoystickWidget(BaseTabWidget):
                 x = int(map_value(x, -100, 100, -20, 20))
                 y = int(map_value(y, -100, 100, -10, 10))
                 # self.send_message("avr/gimbal/move", json.dumps({"x": x, "y": y}))
-                self.zmq_client.zmq_publish(
-                        "gimbal_move",
-                        {
-                            "x": x,
-                            "y": y
-                        }
-                )
+                # self.zmq_client.zmq_publish(
+                #         "gimbal_move",
+                #         {
+                #             "x": x,
+                #             "y": y
+                #         }
+                # )
             self.last_time = ss
 
     def paintEvent(self, event) -> None:
@@ -331,7 +323,8 @@ class JoystickWidget(BaseTabWidget):
         self.update_servos()
 
     def center_gimbal(self) -> None:
-        self.send_message("avr/gimbal/center", "{}")
+        pass
+        # self.send_message("avr/gimbal/center", "{}")
 
     def set_pos(self, x: float, y: float) -> None:
         if self.controller_enabled:
@@ -353,10 +346,8 @@ class JoystickWidget(BaseTabWidget):
 
 
 class ThermalViewControlWidget(BaseTabWidget):
-    def __init__(self, parent: QtWidgets.QWidget, zmq_client: ZMQClient) -> None:
+    def __init__(self, parent: QtWidgets.QWidget) -> None:
         super().__init__(parent)
-
-        self.zmq_client = zmq_client
 
         self.relative_checkbox = None
         self.auto_checkbox = None
@@ -378,7 +369,7 @@ class ThermalViewControlWidget(BaseTabWidget):
         viewer_layout = QtWidgets.QVBoxLayout()
         viewer_groupbox.setLayout(viewer_layout)
 
-        self.viewer = ThermalView(self, self.zmq_client)
+        self.viewer = ThermalView(self, self.client)
         viewer_layout.addWidget(self.viewer)
 
         # set temp range
@@ -404,7 +395,8 @@ class ThermalViewControlWidget(BaseTabWidget):
 
         controller_enable_checkbox = QtWidgets.QCheckBox("Enable Controller")
 
-        self.joystick = JoystickWidget(self, controller_enable_checkbox, self.zmq_client)
+        self.joystick = JoystickWidget(self, controller_enable_checkbox)
+        self.joystick.client = self.client
         sub_joystick_layout.addWidget(self.joystick)
 
         controller_enable_checkbox.stateChanged.connect(
@@ -441,28 +433,29 @@ class ThermalViewControlWidget(BaseTabWidget):
 
         layout.addWidget(joystick_groupbox)
 
-        # connect signals
-        self.joystick.emit_message.connect(self.emit_message.emit)
-
         center_gimbal_button.clicked.connect(
                 lambda: self.joystick.center_gimbal()
         )
 
-        fire_laser_button.clicked.connect(
-                lambda: self.send_message("avr/pcm/fire_laser", AvrPcmFireLaserPayload())
+        def return_nothing():
+            self.client.emit("/laser/fire", {})
+
+        fire_laser_button.connect(
+                QtCore.SIGNAL('clicked()'),
+                return_nothing
         )
 
         laser_on_button.clicked.connect(
-                lambda: self.send_message("avr/pcm/set_laser_on", AvrPcmSetLaserOnPayload())
+                lambda: self.client.emit("/laser/set_loop", {"data": True})
         )
 
         laser_off_button.clicked.connect(
-                lambda: self.send_message("avr/pcm/set_laser_off", AvrPcmSetLaserOffPayload())
+                lambda: self.client.emit("/laser/set_loop", {"data": False})
         )
 
-        kill_button.clicked.connect(
-                lambda: self.kill()
-        )
+        # kill_button.clicked.connect(
+        #         lambda: self.kill()
+        # )
 
         # don't allow us to shrink below size hint
         self.setMinimumSize(self.sizeHint())
@@ -471,7 +464,8 @@ class ThermalViewControlWidget(BaseTabWidget):
         self.joystick.controller_enabled = enabled
 
     def set_auto(self, enabled: bool) -> None:
-        self.send_message("avr/gimbal/auto_aim", json.dumps({"enabled": enabled}))
+        pass
+        # self.send_message("avr/gimbal/auto_aim", json.dumps({"enabled": enabled}))
         # self.zmq_client.zmq_publish("gimbal_auto", {"enabled": enabled})
 
     def set_rel(self, state: bool) -> None:
@@ -507,15 +501,14 @@ class ThermalViewControlWidget(BaseTabWidget):
             return
         self.last_fire = ms
 
-        self.send_message("avr/pcm/fire_laser", AvrPcmFireLaserPayload())
+        self.client.emit("/laser/fire", {})
         # self.zmq_client.zmq_publish("gimbal_fire", "")
 
     def on_controller_rb(self, state: bool) -> None:
         if state:
-            self.send_message("avr/pcm/set_laser_on", AvrPcmSetLaserOnPayload())
+            self.client.emit("/laser/set_loop", {"data": True})
         else:
-            self.send_message("avr/pcm/set_laser_off", AvrPcmSetLaserOffPayload())
-        # self.send_message("avr/gimbal/fire-ready", {"state": state})
+            self.client.emit("/laser/set_loop", {"data": False})
 
     def on_controller_circle(self, state: bool) -> None:
         self.auto_checkbox.setChecked(state)
@@ -528,7 +521,7 @@ class ThermalViewControlWidget(BaseTabWidget):
         self.set_rel(False)
         self.set_auto(False)
         # self.send_message("avr/gimbal/disable", "", qos = 2)
-        self.zmq_client.zmq_publish("gimbal_disable", "")
+        # self.zmq_client.zmq_publish("gimbal_disable", "")
 
     def clear(self) -> None:
         # self.viewer.canvas.clear()

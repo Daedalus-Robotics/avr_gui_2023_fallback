@@ -1,6 +1,6 @@
 from typing import Any
 
-import paho.mqtt.client as mqtt
+import socketio
 from PySide6 import QtCore, QtGui, QtWidgets
 from loguru import logger
 
@@ -10,137 +10,94 @@ from ...lib.enums import ConnectionState
 from ...lib.toast import Toast
 from ...lib.widgets import IntLineEdit
 
-DEFAULT_QOS = 1
 
-
-class MQTTClient(QtCore.QObject):
-    # This class MUST inherit from QObject in order for the signals to work
-
-    # This class works with a QSigna based architecture, as the MQTT client
-    # runs in a separate thread. The callbacks from the MQTT client run in the same
-    # thread as the client and thus those cannot update the GUI, as only the
-    # thread that started the GUI is allowed to update it. Thus, set up the
-    # MQTT client in a separate class with signals that are emitted and connected to
-    # so the data gets passed back to the GUI thread.
-
-    # Once the Signal objects are created, they transform into SignalInstance objects
+class SocketIOClient(QtCore.QObject):
     connection_state: QtCore.SignalInstance = QtCore.Signal(object)  # type: ignore
-    message: QtCore.SignalInstance = QtCore.Signal(str, str)  # type: ignore
-    message_bytes: QtCore.SignalInstance = QtCore.Signal(str, bytes)
 
     def __init__(self) -> None:
         super().__init__()
 
-        self.client = mqtt.Client()
-        self.client.max_inflight_messages_set(10)
-        self.client.on_connect = self.on_connect
-        self.client.on_message = self.on_message
-        self.client.on_disconnect = self.on_disconnect
+        class Test(socketio.Client):
+            def emit(self, event, data=None, namespace=None, callback=None):
+                from threading import Thread
+                Thread(target=super().emit(event, data, namespace, callback), daemon=True).start()
+
+        self.client = Test()
+
+        self.client.on("disconnect", self.on_disconnect)
 
         self.wanted_state = False
 
-    def on_connect(self, client: mqtt.Client, userdata: Any, flags: dict, rc: int) -> None:
+    def on_disconnect(self) -> None:
         """
-        Callback when the MQTT client connects
+        Callback when the SocketIO client disconnects
         """
-        # subscribe to all topics
-        logger.debug("Subscribing to all topics")
-        client.subscribe("#", DEFAULT_QOS)
-
-    def on_message(self, client: mqtt.Client, userdata: Any, msg: mqtt.MQTTMessage) -> None:
-        """
-        Callback for every MQTT message
-        """
-        if "avr/raw" in msg.topic:
-            self.message_bytes.emit(msg.topic, msg.payload)
-        else:
-            try:
-                self.message.emit(msg.topic, msg.payload.decode("utf-8"))
-            except UnicodeDecodeError:
-                pass
-
-    def on_disconnect(self, client: mqtt.Client, userdata: Any, rc: int) -> None:
-        """
-        Callback when the MQTT client disconnects
-        """
-        logger.debug("Disconnected from MQTT server")
+        logger.debug("Disconnected from SocketIO server")
         self.connection_state.emit(ConnectionState.disconnected)
         if self.wanted_state is True:
             Toast.get().send_message.emit("Lost connection to mqtt broker!", 3.0)
-            self.message.emit("avr/gui/sound/critical", {})
 
     def login(self, host: str, port: int) -> None:
         """
-        Connect the MQTT client to the server. This method cannot be named "connect"
+        Connect the SocketIO client to the server. This method cannot be named "connect"
         as this conflicts with the connect methods of the Signals
         """
-        # do nothing on empty sring
+        # do nothing on empty string
         if not host:
             return
 
-        logger.info(f"Connecting to MQTT server at {host}:{port}")
+        logger.info(f"Connecting to SocketIO server at {host}:{port}")
         self.connection_state.emit(ConnectionState.connecting)
 
         try:
             # try to connect to MQTT server
-            self.client.connect(host=host, port=port, keepalive=60)
-            self.client.loop_start()
+            # noinspection HttpUrlsUsage
+            self.client.connect(f"http://{host}:{port}", transports=['websocket'])
 
             # save settings
             config.mqtt_host = host
             config.mqtt_port = port
 
             # emit success
-            logger.success("Connected to MQTT server")
+            logger.success("Connected to SocketIO server")
             self.connection_state.emit(ConnectionState.connected)
             self.wanted_state = True
 
         except Exception:
-            logger.exception("Connection failed to MQTT server")
+            logger.exception("Connection failed to SocketIO server")
             self.connection_state.emit(ConnectionState.failure)
 
     def logout(self) -> None:
         """
-        Disconnect the MQTT client to the server.
+        Disconnect the SocketIO client to the server.
         """
         self.wanted_state = False
-        logger.info("Disconnecting from MQTT server")
+        logger.info("Disconnecting from SocketIO server")
         self.connection_state.emit(ConnectionState.disconnecting)
 
         self.client.disconnect()
-        self.client.loop_stop()
 
-        logger.info("Disconnected from MQTT server")
+        logger.info("Disconnected from SocketIO server")
         self.connection_state.emit(ConnectionState.disconnected)
 
-    def publish(self, topic: str, payload: Any, qos: int = DEFAULT_QOS, retain: bool = False) -> None:
-        """
-        Publish an MQTT message. Proxy function to the underlying client
-        """
-        if not topic:
-            return
 
-        logger.debug(f"Publishing message {topic}: {payload}")
-        self.client.publish(topic, payload, qos, retain)
-
-
-class MQTTConnectionWidget(QtWidgets.QWidget):
+class SocketIOConnectionWidget(QtWidgets.QWidget):
     connection_state: QtCore.SignalInstance = QtCore.Signal(object)  # type: ignore
     current_host: str = ""
 
     def __init__(self, parent: QtWidgets.QWidget) -> None:
         super().__init__(parent)
 
-        self.mqtt_menu_state = None
-        self.mqtt_menu_connect = None
-        self.mqtt_menu = None
+        self.socketio_menu_state = None
+        self.socketio_menu_connect = None
+        self.socketio_menu = None
         self.disconnect_button = None
         self.connect_button = None
         self.state_label = None
         self.port_line_edit = None
         self.hostname_line_edit = None
-        self.mqtt_client = MQTTClient()
-        self.mqtt_client.connection_state.connect(self.set_connected_state)
+        self.socketio_client = SocketIOClient()
+        self.socketio_client.connection_state.connect(self.set_connected_state)
 
     def build(self) -> None:
         """
@@ -186,55 +143,55 @@ class MQTTConnectionWidget(QtWidgets.QWidget):
         self.hostname_line_edit.returnPressed.connect(self.connect_button.click)
         self.port_line_edit.returnPressed.connect(self.connect_button.click)
         self.connect_button.clicked.connect(  # type: ignore
-                lambda: self.mqtt_client.login(
-                        self.hostname_line_edit.text(), int(self.port_line_edit.text())
-                )
+            lambda: self.socketio_client.login(
+                self.hostname_line_edit.text(), int(self.port_line_edit.text())
+            )
         )
-        self.disconnect_button.clicked.connect(self.mqtt_client.logout)  # type: ignore
+        self.disconnect_button.clicked.connect(self.socketio_client.logout)  # type: ignore
 
-        self.mqtt_menu = QtWidgets.QMenu("MQTT")
+        self.socketio_menu = QtWidgets.QMenu("SocketIO")
 
-        self.mqtt_menu_connect = QtGui.QAction("Connect")
+        self.socketio_menu_connect = QtGui.QAction("Connect")
 
         def mqtt_menu_connect_triggered() -> None:
-            if self.mqtt_client.connection_state == ConnectionState.connected:
-                self.mqtt_client.logout()
-                self.mqtt_menu_connect.setChecked(False)
+            if self.socketio_client.connection_state == ConnectionState.connected:
+                self.socketio_client.logout()
+                self.socketio_menu_connect.setChecked(False)
             else:
                 try:
                     port = int(self.port_line_edit.text())
                 except ValueError:
                     return
-                self.mqtt_client.login(self.hostname_line_edit.text(), port)
-                self.mqtt_menu_connect.setChecked(True)
+                self.socketio_client.login(self.hostname_line_edit.text(), port)
+                self.socketio_menu_connect.setChecked(True)
 
-        self.mqtt_menu_connect.triggered.connect(mqtt_menu_connect_triggered)
-        self.mqtt_menu_connect.setCheckable(True)
-        self.mqtt_menu.addAction(self.mqtt_menu_connect)
+        self.socketio_menu_connect.triggered.connect(mqtt_menu_connect_triggered)
+        self.socketio_menu_connect.setCheckable(True)
+        self.socketio_menu.addAction(self.socketio_menu_connect)
 
-        self.mqtt_menu_state = QtGui.QAction("Disconnected")
-        self.mqtt_menu_state.setEnabled(False)
-        self.mqtt_menu.addAction(self.mqtt_menu_state)
+        self.socketio_menu_state = QtGui.QAction("Disconnected")
+        self.socketio_menu_state.setEnabled(False)
+        self.socketio_menu.addAction(self.socketio_menu_state)
 
-        def mqtt_menu_state(state: ConnectionState) -> None:
+        def socketio_menu_state(state: ConnectionState) -> None:
             if state == ConnectionState.connected:
-                self.mqtt_menu_connect.setChecked(True)
-                self.mqtt_menu_state.setText("Connected")
+                self.socketio_menu_connect.setChecked(True)
+                self.socketio_menu_state.setText("Connected")
             elif state == ConnectionState.disconnected:
-                self.mqtt_menu_connect.setChecked(False)
-                self.mqtt_menu_state.setText("Disconnected")
+                self.socketio_menu_connect.setChecked(False)
+                self.socketio_menu_state.setText("Disconnected")
             elif state == ConnectionState.connecting:
-                self.mqtt_menu_connect.setChecked(True)
-                self.mqtt_menu_state.setText("Connecting")
+                self.socketio_menu_connect.setChecked(True)
+                self.socketio_menu_state.setText("Connecting")
             elif state == ConnectionState.disconnecting:
-                self.mqtt_menu_connect.setChecked(False)
-                self.mqtt_menu_state.setText("Disconnecting")
+                self.socketio_menu_connect.setChecked(False)
+                self.socketio_menu_state.setText("Disconnecting")
 
-        self.mqtt_client.connection_state.connect(mqtt_menu_state)
+        self.socketio_client.connection_state.connect(socketio_menu_state)
 
     def set_connected_state(self, connection_state: ConnectionState) -> None:
         """
-        Set the connected state of the MQTT connection widget elements.
+        Set the connected state of the SocketIO connection widget elements.
         """
         color_lookup = {
             ConnectionState.connected: "Green",
@@ -251,7 +208,7 @@ class MQTTConnectionWidget(QtWidgets.QWidget):
         ]
 
         self.state_label.setText(
-                f"State: {wrap_text(connection_state.name.title(), color_lookup[connection_state])}"
+            f"State: {wrap_text(connection_state.name.title(), color_lookup[connection_state])}"
         )
 
         self.disconnect_button.setEnabled(connected)

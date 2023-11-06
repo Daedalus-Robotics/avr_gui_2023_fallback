@@ -8,7 +8,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from avrgui.lib import utils
 from avrgui.lib.graphics_label import GraphicsLabel
 from avrgui.tabs.base import BaseTabWidget
-from avrgui.tabs.connection.mqtt import MQTTClient
+from avrgui.tabs.connection.socketio import SocketIOClient
 
 RED_COLOR = "red"
 LIGHT_BLUE_COLOR = "#0091ff"
@@ -23,7 +23,7 @@ STATE_LOOKUP = {
 
 
 class HeadsUpDisplayWidget(BaseTabWidget):
-    def __init__(self, client: MQTTClient, parent: QtWidgets.QWidget) -> None:
+    def __init__(self, client: SocketIOClient, parent: QtWidgets.QWidget) -> None:
         super().__init__(parent)
 
         self.client = client
@@ -141,7 +141,7 @@ class ThermalCameraPane(QtWidgets.QWidget):
 class WaterDropPane(QtWidgets.QWidget):
     move_dropper = QtCore.Signal(int)
 
-    def __init__(self, client: MQTTClient, parent: QtWidgets.QWidget) -> None:
+    def __init__(self, client: SocketIOClient, parent: QtWidgets.QWidget) -> None:
         super().__init__(parent)
         self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.MinimumExpanding)
         # self.setFixedHeight(175)

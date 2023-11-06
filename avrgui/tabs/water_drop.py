@@ -4,7 +4,7 @@ from PySide6 import QtCore, QtWidgets
 
 from avrgui.lib.graphics_view import GraphicsView
 from avrgui.tabs.base import BaseTabWidget
-from avrgui.tabs.connection.zmq import ZMQClient
+import socketio
 
 
 def map_value(
@@ -16,13 +16,12 @@ def map_value(
 class WaterDropWidget(BaseTabWidget):
     update_position = QtCore.Signal(int)
 
-    def __init__(self, parent: QtWidgets.QWidget, zmq_client: ZMQClient) -> None:
+    def __init__(self, parent: QtWidgets.QWidget) -> None:
         super().__init__(parent)
 
-        self.zmq_client = zmq_client
-
         self.last_time = 0
-        self.position_slider: QtWidgets.QSlider | None = None
+        # self.position_slider: QtWidgets.QSlider | None = None
+        self.trigger_button: QtWidgets.QPushButton | None = None
         self.controller_enabled_checkbox = None
         self.controller_enabled = False
         self.canvas = None
@@ -65,14 +64,18 @@ class WaterDropWidget(BaseTabWidget):
         controls_groupbox.setFixedWidth(350)
         controls_groupbox.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Expanding)
 
-        self.position_slider = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
-        # self.position_slider.setTickPosition(QtWidgets.QSlider.TickPosition.TicksBothSides)
-        self.position_slider.setRange(0, 100)
-        self.position_slider.setFixedWidth(250)
-        self.position_slider.sliderMoved.connect(
-                self.set_bpu_slider
-        )
-        controls_layout.addWidget(self.position_slider)
+        # self.position_slider = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
+        # # self.position_slider.setTickPosition(QtWidgets.QSlider.TickPosition.TicksBothSides)
+        # self.position_slider.setRange(0, 100)
+        # self.position_slider.setFixedWidth(250)
+        # self.position_slider.sliderMoved.connect(
+        #         self.set_bpu_slider
+        # )
+        # controls_layout.addWidget(self.position_slider)
+
+        self.trigger_button = QtWidgets.QPushButton("Trigger")
+        self.trigger_button.clicked.connect(self.trigger_bpu)
+        controls_layout.addWidget(self.trigger_button)
 
         self.controller_enabled_checkbox = QtWidgets.QCheckBox("Enable Controller")
         self.controller_enabled_checkbox.stateChanged.connect(
@@ -94,7 +97,7 @@ class WaterDropWidget(BaseTabWidget):
 
     def set_controller(self, state: bool) -> None:
         self.controller_enabled = state
-        self.position_slider.setEnabled(not state)
+        # self.position_slider.setEnabled(not state)
 
     def process_message(self, topic: str, payload: str) -> None:
         pass
@@ -102,23 +105,5 @@ class WaterDropWidget(BaseTabWidget):
     def clear(self) -> None:
         pass
 
-    def set_bpu_slider(self, percent: int) -> None:
-        if not self.controller_enabled:
-            us = int(map_value(percent, 0, 100, 500, 1000))
-            self.send_message("avr/pcm/set_servo_abs", {"servo": 1, "absolute": us})
-            # self.zmq_client.zmq_publish("water_drop_set", {"percent": percent})
-            self.update_position.emit(percent)
-
-    def set_bpu(self, value: int) -> None:
-        ss = time.time()
-        timesince = ss - self.last_time
-        if timesince >= 0.01 or (not self.last_closed and value == 0):
-            if self.controller_enabled:
-                us = int(map_value(value, 0, 255, 500, 1000))
-                percent = int(map_value(value, 0, 255, 0, 100))
-                self.send_message("avr/pcm/set_servo_abs", {"servo": 1, "absolute": us})
-                # self.zmq_client.zmq_publish("water_drop_set", {"percent": percent})
-                self.update_position.emit(percent)
-                self.position_slider.setValue(value)
-            self.last_time = ss
-        self.last_closed = value == 0
+    def trigger_bpu(self) -> None:
+        self.client.emit("/bdu/trigger", {})
