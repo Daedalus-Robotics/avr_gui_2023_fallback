@@ -357,6 +357,9 @@ class ThermalViewControlWidget(BaseTabWidget):
         self.streaming_checkbox = None
         self.setWindowTitle("Thermal View/Control")
 
+        # the self.view.update_canvas takes in an 8x8x3 array of pixels from thermal camera
+        self.client.on('/thermal/raw', self.viewer.update_canvas)
+
     def build(self) -> None:
         """
         Build the GUI layout
@@ -428,8 +431,8 @@ class ThermalViewControlWidget(BaseTabWidget):
         laser_off_button = QtWidgets.QPushButton("Laser Off")
         joystick_layout.addWidget(laser_off_button)
 
-        kill_button = QtWidgets.QPushButton("Kill")
-        joystick_layout.addWidget(kill_button)
+        # kill_button = QtWidgets.QPushButton("Kill")
+        # joystick_layout.addWidget(kill_button)
 
         layout.addWidget(joystick_groupbox)
 
@@ -437,12 +440,8 @@ class ThermalViewControlWidget(BaseTabWidget):
                 lambda: self.joystick.center_gimbal()
         )
 
-        def return_nothing():
-            self.client.emit("/laser/fire", {})
-
-        fire_laser_button.connect(
-                QtCore.SIGNAL('clicked()'),
-                return_nothing
+        fire_laser_button.clicked.connect(
+                lambda: self.client.emit("/laser/fire", {})
         )
 
         laser_on_button.clicked.connect(
