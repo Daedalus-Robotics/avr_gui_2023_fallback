@@ -189,14 +189,14 @@ class MainWindow(QtWidgets.QWidget):
         #         except json.JSONDecodeError:
         #             pass
 
-        # self.main_connection_widget.socketio_connection_widget.socketio_client.message.connect(
+        # self.main_connection_widget.socketio_connection_widget.socketio_client.client.message.connect(
         #         toast_mqtt
         # )
 
         # vmc telemetry widget
 
         self.vmc_telemetry_widget = VMCTelemetryWidget(self, controller)
-        self.vmc_telemetry_widget.client = self.main_connection_widget.socketio_connection_widget.socketio_client
+        self.vmc_telemetry_widget.client = self.main_connection_widget.socketio_connection_widget.socketio_client.client
         self.vmc_telemetry_widget.build()
         self.vmc_telemetry_widget.pop_in.connect(self.tabs.pop_in)
         self.tabs.addTab(
@@ -228,7 +228,7 @@ class MainWindow(QtWidgets.QWidget):
         # thermal view widget
 
         self.thermal_view_control_widget = ThermalViewControlWidget(self)
-        self.thermal_view_control_widget.client = self.main_connection_widget.socketio_connection_widget.socketio_client
+        self.thermal_view_control_widget.client = self.main_connection_widget.socketio_connection_widget.socketio_client.client
         self.thermal_view_control_widget.build()
         self.thermal_view_control_widget.pop_in.connect(self.tabs.pop_in)
         self.tabs.addTab(
@@ -259,7 +259,7 @@ class MainWindow(QtWidgets.QWidget):
         # camera view widget
 
         # self.camera_view_widget = CameraViewWidget(self)
-        # self.camera_view_widget.client = self.main_connection_widget.socketio_connection_widget.socketio_client
+        # self.camera_view_widget.client = self.main_connection_widget.socketio_connection_widget.socketio_client.client
         # self.camera_view_widget.build()
         # self.camera_view_widget.pop_in.connect(self.tabs.pop_in)
         # self.tabs.addTab(
@@ -276,7 +276,7 @@ class MainWindow(QtWidgets.QWidget):
         # water drop widget
 
         self.water_drop_widget = WaterDropWidget(self)
-        self.water_drop_widget.client = self.main_connection_widget.socketio_connection_widget.socketio_client
+        self.water_drop_widget.client = self.main_connection_widget.socketio_connection_widget.socketio_client.client
         self.water_drop_widget.build()
         self.water_drop_widget.pop_in.connect(self.tabs.pop_in)
         self.tabs.addTab(
@@ -288,13 +288,13 @@ class MainWindow(QtWidgets.QWidget):
                 self.water_drop_widget.trigger_bpu
         )
         self.controller_touchBtn.connect(
-                lambda: self.main_connection_widget.socketio_connection_widget.socketio_client.publish(
+                lambda: self.main_connection_widget.socketio_connection_widget.socketio_client.client.publish(
                         "avr/autonomy/kill",
                         ""
                 )
         )
         self.controller_lb.connect(
-                lambda: self.main_connection_widget.socketio_connection_widget.socketio_client.publish(
+                lambda: self.main_connection_widget.socketio_connection_widget.socketio_client.client.publish(
                         "avr/autonomy/set_auto_water_drop",
                         json.dumps({
                             "enabled": True
@@ -319,7 +319,7 @@ class MainWindow(QtWidgets.QWidget):
         # heads up display widget
 
         self.heads_up_widget = HeadsUpDisplayWidget(
-                self.main_connection_widget.socketio_connection_widget.socketio_client,
+                self.main_connection_widget.socketio_connection_widget.socketio_client.client,
                 self
         )
         self.heads_up_widget.build()
@@ -414,7 +414,7 @@ class MainWindow(QtWidgets.QWidget):
         Override close event to close all connections.
         """
         if self.mqtt_connected:
-            self.main_connection_widget.socketio_connection_widget.socketio_client.logout()
+            self.main_connection_widget.socketio_connection_widget.socketio_client.client.logout()
 
         if self.serial_connected:
             self.main_connection_widget.serial_connection_widget.serial_client.logout()
@@ -478,7 +478,7 @@ def main() -> None:
 
     d = QtWidgets.QMenu(w)
     socketio_action = QtGui.QAction("SocketIO Disconnected")
-    socketio_action.triggered.connect(w.main_connection_widget.socketio_connection_widget.socketio_client.logout)
+    socketio_action.triggered.connect(w.main_connection_widget.socketio_connection_widget.socketio_client.client.logout)
     socketio_action.setEnabled(False)
     w.main_connection_widget.socketio_connection_widget.connection_state.connect(
             lambda state: socketio_action.setEnabled(state == ConnectionState.connected)
@@ -492,7 +492,7 @@ def main() -> None:
 
     # kill_action = QtGui.QAction("Kill Motors")
     # kill_action.triggered.connect(
-    #         lambda: w.main_connection_widget.socketio_connection_widget.socketio_client.publish(
+    #         lambda: w.main_connection_widget.socketio_connection_widget.socketio_client.client.publish(
     #                 "avr/kill", "", qos=2
     #         )
     # )
@@ -511,7 +511,7 @@ def main() -> None:
     d.addAction(controller_action)
 
     # w.main_connection_widget.socketio_connection_widget.connection_state.connect(
-    #         lambda state: w.main_connection_widget.socketio_connection_widget.socketio_client.publish(
+    #         lambda state: w.main_connection_widget.socketio_connection_widget.socketio_client.client.publish(
     #                 "avr/status/request_update", "", qos=2
     #         ) if state == ConnectionState.connected else None
     # )
