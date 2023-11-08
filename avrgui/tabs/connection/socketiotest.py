@@ -1,6 +1,9 @@
-from typing import Any
+import multiprocessing
+from typing import Any, Tuple
 
 import socketio
+from multiprocessing import Process, Queue
+from threading import Thread
 from PySide6 import QtCore, QtGui, QtWidgets
 from loguru import logger
 
@@ -11,16 +14,69 @@ from ...lib.toast import Toast
 from ...lib.widgets import IntLineEdit
 
 
-class SocketIOClient(QtCore.QObject):
-    connection_state: QtCore.SignalInstance = QtCore.Signal(object)  # type: ignore
+class SocketIOWorkaround:
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, signal: QtCore.SignalInstance, wanted_state) -> None:
 
+        self.connection_state = signal
+        self.running = True
+        self.wanted_state = wanted_state
+
+        self.emit_queue: multiprocessing.Queue[Tuple] = Queue()
+        self.on_queue: multiprocessing.Queue[Tuple] = Queue()
+
+        self.pipe_endpoint: multiprocessing.Process | None = None
+
+    def _on_startup(self, host: int, port: int):
         self.client = socketio.Client()
         self.client.on("disconnect", self.on_disconnect)
 
-        self.wanted_state = False
+        # do nothing on empty string
+        if not host:
+            return
+
+        print(f"Connecting to SocketIO server at {host}:{port}")
+        self.connection_state.emit(ConnectionState.connecting)
+
+        try:
+            # try to connect to MQTT server
+            # noinspection HttpUrlsUsage
+            self.client.connect(f"http://{host}:{port}", transports=['websocket'])
+
+            # emit success
+            print("Connected to SocketIO server")
+            self.connection_state.emit(ConnectionState.connected)
+            self.wanted_state = True
+
+        except Exception:
+            print("Connection failed to SocketIO server")
+            self.connection_state.emit(ConnectionState.failure)
+
+        while self.running:
+            if not self.emit_queue.empty():
+                event, data = self.emit_queue.get()
+                self.client.emit(event, data)
+            if not self.on_queue.empty():
+                event, data = self.on_queue.get()
+                self.client.on(event, data)
+
+        self.client.disconnect()
+
+    def emit(self, event: str, data: Any) -> None:
+        """
+        Emit an event to the server.
+        """
+
+        print(event, data)
+        self.emit_queue.put((event, data))
+
+    def login(self, host, port) -> None:
+        """
+        Connect the SocketIO client to the server. This method cannot be named "connect"
+        as this conflicts with the connect methods of the Signals
+        """
+        self.pipe_endpoint = Thread(target=self._on_startup, daemon=True, args=[host, port])
+        self.pipe_endpoint.start()
 
     def on_disconnect(self) -> None:
         """
@@ -30,37 +86,6 @@ class SocketIOClient(QtCore.QObject):
         self.connection_state.emit(ConnectionState.disconnected)
         if self.wanted_state is True:
             Toast.get().send_message.emit("Lost connection to mqtt broker!", 3.0)
-
-    def login(self, host: str, port: int) -> None:
-        """
-        Connect the SocketIO client to the server. This method cannot be named "connect"
-        as this conflicts with the connect methods of the Signals
-        """
-        # do nothing on empty string
-        if not host:
-            return
-
-        logger.info(f"Connecting to SocketIO server at {host}:{port}")
-        self.connection_state.emit(ConnectionState.connecting)
-
-        try:
-            # try to connect to MQTT server
-            # noinspection HttpUrlsUsage
-            self.client.connect(f"ws://{host}:{port}")  # , transports=['websocket'])
-
-            # save settings
-            config.mqtt_host = host
-            config.mqtt_port = port
-
-            # emit success
-            logger.success("Connected to SocketIO server")
-            self.connection_state.emit(ConnectionState.connected)
-            self.wanted_state = True
-
-        except Exception as e:
-            print(e)
-            logger.exception("Connection failed to SocketIO server")
-            self.connection_state.emit(ConnectionState.failure)
 
     def logout(self) -> None:
         """
@@ -74,6 +99,48 @@ class SocketIOClient(QtCore.QObject):
 
         logger.info("Disconnected from SocketIO server")
         self.connection_state.emit(ConnectionState.disconnected)
+
+
+class SocketIOClient(QtCore.QObject):
+    connection_state: QtCore.SignalInstance = QtCore.Signal(object)  # type: ignore
+
+    def __init__(self) -> None:
+        super().__init__()
+
+        self.wanted_state = False
+        self.client = SocketIOWorkaround(signal=self.connection_state, wanted_state=self.wanted_state)
+
+    def login(self, host, port) -> None:
+        """
+        Connect the SocketIO client to the server. This method cannot be named "connect"
+        as this conflicts with the connect methods of the Signals
+        """
+        # do nothing on empty string
+
+        logger.info(f"Connecting to SocketIO server at {host}:{port}")
+        self.connection_state.emit(ConnectionState.connecting)
+
+        try:
+            self.client.login(host=host, port=port)
+
+            # save settings
+            config.mqtt_host = host
+            config.mqtt_port = port
+
+            # emit success
+            logger.success("Connected to SocketIO server")
+            self.connection_state.emit(ConnectionState.connected)
+            self.wanted_state = True
+
+        except Exception:
+            logger.exception("Connection failed to SocketIO server")
+            self.connection_state.emit(ConnectionState.failure)
+    # def testty(self, event: str, data: Any):
+    #     print(event, data)
+    #     self.client.emit(event, data)
+
+    def logout(self):
+        self.client.running = False
 
 
 class SocketIOConnectionWidget(QtWidgets.QWidget):

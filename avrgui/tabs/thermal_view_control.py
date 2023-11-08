@@ -357,13 +357,12 @@ class ThermalViewControlWidget(BaseTabWidget):
         self.streaming_checkbox = None
         self.setWindowTitle("Thermal View/Control")
 
-        # the self.view.update_canvas takes in an 8x8x3 array of pixels from thermal camera
-        self.client.on('/thermal/raw', self.viewer.update_canvas)
-
     def build(self) -> None:
         """
         Build the GUI layout
         """
+
+
         layout = QtWidgets.QHBoxLayout(self)
         self.setLayout(layout)
 
@@ -374,6 +373,9 @@ class ThermalViewControlWidget(BaseTabWidget):
 
         self.viewer = ThermalView(self, self.client)
         viewer_layout.addWidget(self.viewer)
+
+        # the self.view.update_canvas takes in an 8x8x3 array of pixels from thermal camera
+        self.client.on('/thermal/raw', self.viewer.update_canvas)
 
         # set temp range
 

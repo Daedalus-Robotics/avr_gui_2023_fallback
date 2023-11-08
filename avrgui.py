@@ -478,7 +478,7 @@ def main() -> None:
 
     d = QtWidgets.QMenu(w)
     socketio_action = QtGui.QAction("SocketIO Disconnected")
-    socketio_action.triggered.connect(w.main_connection_widget.socketio_connection_widget.socketio_client.client.logout)
+    socketio_action.triggered.connect(w.main_connection_widget.socketio_connection_widget.socketio_client.logout)
     socketio_action.setEnabled(False)
     w.main_connection_widget.socketio_connection_widget.connection_state.connect(
             lambda state: socketio_action.setEnabled(state == ConnectionState.connected)
