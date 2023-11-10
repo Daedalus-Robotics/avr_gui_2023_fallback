@@ -154,11 +154,6 @@ class WaterDropPane(QtWidgets.QWidget):
         water_drop_groupbox.setLayout(water_drop_layout)
         water_drop_groupbox.setMinimumWidth(100)
 
-        self.percent = QtWidgets.QProgressBar()
-        self.percent.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
-        self.percent.setMinimumWidth(300)
-        water_drop_layout.addRow("Position:", self.percent)
-
         self.auto_state_label = QtWidgets.QLabel(
                 self.format_auto_state(0)
         )
@@ -248,8 +243,6 @@ class WaterDropPane(QtWidgets.QWidget):
         water_drop_layout.addWidget(radio_button_widget)
 
         layout.addWidget(water_drop_groupbox)
-
-        self.move_dropper.connect(self.percent.setValue)
 
     def process_message(self, topic: str, payload: str) -> None:
         if topic == "avr/autonomy/water_drop_state":

@@ -16,8 +16,6 @@ def map_value(
 
 
 class WaterDropWidget(BaseTabWidget):
-    update_position = QtCore.Signal(int)
-
     def __init__(self, parent: QtWidgets.QWidget, ros_client: RosBridgeClient) -> None:
         print(ros_client)
         super().__init__(parent, ros_client)
@@ -104,14 +102,11 @@ class WaterDropWidget(BaseTabWidget):
     def setup_ros(self, client: roslibpy.Ros):
         super().setup_ros(client)
 
-        print("water test")
-
         self.bdu_trigger = roslibpy.Service(
             client,
             '/bdu/trigger',
             'std_srvs/srv/Trigger'
         )
-
 
     def set_controller(self, state: bool) -> None:
         self.controller_enabled = state
@@ -124,10 +119,9 @@ class WaterDropWidget(BaseTabWidget):
         pass
 
     def trigger_bpu(self) -> None:
-        print(type(self.bdu_trigger))
         self.bdu_trigger.call(
-            roslibpy.ServiceRequest({}),
+            roslibpy.ServiceRequest(),
             callback=lambda msg: logger.debug(
-                'Set Loop result: ' + msg.get('message', '')
-                                     )
+                'Bdu trigger result: ' + msg.get('message', '')
+            )
         )

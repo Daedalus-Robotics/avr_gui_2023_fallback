@@ -112,7 +112,7 @@ class MainWindow(QtWidgets.QWidget):
     controller_square = QtCore.Signal(bool)
     controller_lb = QtCore.Signal()
     controller_rb = QtCore.Signal(bool)
-    controller_lt = QtCore.Signal(int)
+    controller_lt = QtCore.Signal()
     controller_rt = QtCore.Signal()
     controller_ps = QtCore.Signal()
     controller_l = QtCore.Signal(tuple)
@@ -130,7 +130,7 @@ class MainWindow(QtWidgets.QWidget):
         self.menu_bar = None
         self.toast: Toast | None = None
         self.tabs = None
-        self.main_connection_widget = None
+        self.main_connection_widget: MainConnectionWidget | None = None
         self.pcc_tester_widget = None
         self.mqtt_debug_widget = None
         self.vmc_telemetry_widget = None
@@ -286,20 +286,20 @@ class MainWindow(QtWidgets.QWidget):
         self.controller_lt.connect(
                 self.water_drop_widget.trigger_bpu
         )
-        self.controller_touchBtn.connect(
-                lambda: self.main_connection_widget.ros_client_connection_widget.ros_client.client.publish(
-                        "avr/autonomy/kill",
-                        ""
-                )
-        )
-        self.controller_lb.connect(
-                lambda: self.main_connection_widget.ros_client_connection_widget.ros_client.client.publish(
-                        "avr/autonomy/set_auto_water_drop",
-                        json.dumps({
-                            "enabled": True
-                        })
-                )
-        )
+        # self.controller_touchBtn.connect(
+        #         lambda: self.main_connection_widget.ros_client_connection_widget.ros_client.client.publish(
+        #                 "avr/autonomy/kill",
+        #                 ""
+        #         )
+        # )
+        # self.controller_lb.connect(
+        #         lambda: self.main_connection_widget.ros_client_connection_widget.ros_client.client.publish(
+        #                 "avr/autonomy/set_auto_water_drop",
+        #                 json.dumps({
+        #                     "enabled": True
+        #                 })
+        #         )
+        # )
 
         # moving map widget
 
@@ -334,9 +334,6 @@ class MainWindow(QtWidgets.QWidget):
         # )
         self.thermal_view_control_widget.viewer.update_frame.connect(
                 self.heads_up_widget.thermal_pane.update_frame.emit
-        )
-        self.water_drop_widget.update_position.connect(
-                self.heads_up_widget.water_pane.move_dropper.emit
         )
         self.vmc_telemetry_widget.voltage_update.connect(
                 self.heads_up_widget.telemetry_pane.update_battery.emit
@@ -409,10 +406,7 @@ class MainWindow(QtWidgets.QWidget):
         Override close event to close all connections.
         """
         if self.mqtt_connected:
-            self.main_connection_widget.ros_client_connection_widget.ros_client.client.logout()
-
-        if self.serial_connected:
-            self.main_connection_widget.serial_connection_widget.serial_client.logout()
+            self.main_connection_widget.ros_client_connection_widget.ros_client.logout()
 
         event.accept()
 
@@ -445,7 +439,7 @@ def main() -> None:
         controller.square.on_state.register(w.controller_square.emit)
         controller.left_bumper.on_press.register(w.controller_lb.emit)
         controller.right_bumper.on_state.register(w.controller_rb.emit)
-        controller.left_trigger.on_pos.register(w.controller_lt.emit)
+        controller.left_trigger.on_press.register(w.controller_lt.emit)
         controller.right_trigger.on_press.register(w.controller_rt.emit)
         controller.ps.on_press.register(w.controller_ps.emit)
         controller.left_stick.on_move.register(w.controller_l.emit)
