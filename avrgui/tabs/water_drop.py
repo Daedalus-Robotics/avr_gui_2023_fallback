@@ -101,7 +101,7 @@ class WaterDropWidget(BaseTabWidget):
 
         layout.addWidget(loading_groupbox, 1, 0)
 
-    def ros_setup(self, client: roslibpy.Ros):
+    def setup_ros(self, client: roslibpy.Ros):
         super().setup_ros(client)
 
         print("water test")
