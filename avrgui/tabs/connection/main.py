@@ -10,7 +10,7 @@ class MainConnectionWidget(BaseTabWidget):
     """
 
     def __init__(self, parent: QtWidgets.QWidget) -> None:
-        super().__init__(parent)
+        super().__init__(parent, None)
 
         self.ros_client_connection_widget = None
         self.controller_connect_button = None

@@ -5,10 +5,10 @@ import time
 import numpy as np
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from avrgui.lib import utils
-from avrgui.lib.graphics_label import GraphicsLabel
-from avrgui.tabs.base import BaseTabWidget
-from avrgui.tabs.connection.socketio import SocketIOClient
+from ..lib import utils
+from ..lib.graphics_label import GraphicsLabel
+from .base import BaseTabWidget
+from .connection.rosbridge import RosBridgeClient
 
 RED_COLOR = "red"
 LIGHT_BLUE_COLOR = "#0091ff"
@@ -56,7 +56,7 @@ class HeadsUpDisplayWidget(BaseTabWidget):
         control_layout = QtWidgets.QVBoxLayout()
         control_groupbox.setLayout(control_layout)
 
-        self.water_pane = WaterDropPane(self.client, self)
+        self.water_pane = WaterDropPane(self)
         control_layout.addWidget(self.water_pane)
 
         self.gimbal_pane = GimbalPane(self)
@@ -139,12 +139,10 @@ class ThermalCameraPane(QtWidgets.QWidget):
 class WaterDropPane(QtWidgets.QWidget):
     move_dropper = QtCore.Signal(int)
 
-    def __init__(self, client: SocketIOClient, parent: QtWidgets.QWidget) -> None:
+    def __init__(self, parent: QtWidgets.QWidget) -> None:
         super().__init__(parent)
         self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.MinimumExpanding)
         # self.setFixedHeight(175)
-
-        self.client = client
 
         layout = QtWidgets.QVBoxLayout()
         self.setLayout(layout)

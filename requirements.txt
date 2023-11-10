@@ -1,5 +1,4 @@
-pyserial~=3.5
-python-socketio[client]~=5.10.0
+roslibpy~=1.6.0
 loguru~=0.6.0
 colour~=0.1.5
 numpy~=1.23.4

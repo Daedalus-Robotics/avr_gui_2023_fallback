@@ -4,6 +4,7 @@ import json
 from typing import Callable
 
 import colour
+import roslibpy
 from PySide6 import QtCore, QtWidgets
 from bell.avr.mqtt.payloads import (
     AvrFcmAttitudeEulerPayload,
@@ -15,6 +16,7 @@ from bell.avr.mqtt.payloads import (
 )
 
 from .base import BaseTabWidget
+from .connection.rosbridge import RosBridgeClient
 from ..lib.color import smear_color, wrap_text
 from ..lib.toast import Toast
 from ..lib.widgets import DisplayLineEdit, StatusLabel
@@ -32,8 +34,8 @@ class VMCTelemetryWidget(BaseTabWidget):
     armed_update = QtCore.Signal(str)
     mode_update = QtCore.Signal(str)
 
-    def __init__(self, parent: QtWidgets.QWidget, controller) -> None:
-        super().__init__(parent)
+    def __init__(self, parent: QtWidgets.QWidget, client: RosBridgeClient, controller) -> None:
+        super().__init__(parent, client)
 
         self.controller = controller
 

@@ -1,3 +1,4 @@
+import json
 import math
 import time
 from enum import Enum, auto
@@ -5,10 +6,13 @@ from typing import Any
 
 import colour
 import numpy as np
+import roslibpy
 import socketio
 from PySide6 import QtCore, QtGui, QtWidgets
+from loguru import logger
 
 from .base import BaseTabWidget
+from .connection.rosbridge import RosBridgeClient
 from ..lib import stream
 from ..lib.graphics_label import GraphicsLabel
 
@@ -37,10 +41,8 @@ class Direction(Enum):
 class ThermalView(QtWidgets.QWidget):
     update_frame = QtCore.Signal(QtGui.QPixmap)
 
-    def __init__(self, parent: QtWidgets.QWidget, client: socketio.Client) -> None:
+    def __init__(self, parent: QtWidgets.QWidget) -> None:
         super().__init__(parent)
-
-        self.client = client
 
         # canvas size
         self.width_ = 300
@@ -355,6 +357,7 @@ class ThermalViewControlWidget(BaseTabWidget):
         self.joystick = None
         self.viewer: ThermalView | None = None
         self.streaming_checkbox = None
+        self.thermal_subscriber = None
         self.setWindowTitle("Thermal View/Control")
 
         # ---- TOPICS ----
@@ -378,7 +381,7 @@ class ThermalViewControlWidget(BaseTabWidget):
         viewer_layout.addWidget(self.viewer)
 
         # the self.view.update_canvas takes in an 8x8x3 array of pixels from thermal camera
-        self.client.on('/thermal/raw', self.viewer.update_canvas)
+        # self.client.on('/thermal/raw', self.viewer.update_canvas)
 
         # set temp range
 
@@ -441,20 +444,29 @@ class ThermalViewControlWidget(BaseTabWidget):
 
         layout.addWidget(joystick_groupbox)
 
-        center_gimbal_button.clicked.connect(
-                lambda: self.joystick.center_gimbal()
-        )
+        # center_gimbal_button.clicked.connect(
+        #         lambda: self.joystick.center_gimbal()
+        # )
 
         fire_laser_button.clicked.connect(
-                lambda: self.client.emit("/laser/fire~~request", {})
+                lambda: self.laser_trigger.call(roslibpy.ServiceRequest(),
+                                                callback=lambda msg: logger.debug(
+                                                    'Fire laser result: ' + msg.get('message', '')
+                                                ))
         )
 
         laser_on_button.clicked.connect(
-                lambda: self.client.emit("/laser/set_loop~~request", {"data": True})
+                lambda: self.laser_set_loop.call(roslibpy.ServiceRequest({'data': True}),
+                                                 callback=lambda msg: logger.debug(
+                                                     'Set Loop result: ' + msg.get('message', '')
+                                                 ))
         )
 
         laser_off_button.clicked.connect(
-                lambda: self.client.emit("/laser/set_loop~~request", {"data": False})
+                lambda: self.laser_set_loop.call(roslibpy.ServiceRequest({'data': False}),
+                                                 callback=lambda msg: logger.debug(
+                                                     'Set Loop results: ' + msg.get('message', '')
+                                                 ))
         )
 
         # kill_button.clicked.connect(
@@ -463,6 +475,29 @@ class ThermalViewControlWidget(BaseTabWidget):
 
         # don't allow us to shrink below size hint
         self.setMinimumSize(self.sizeHint())
+
+    def setup_ros(self, client: roslibpy.Ros) -> None:
+        super().setup_ros(client)
+
+        print("thermal test")
+
+        self.thermal_raw = roslibpy.Topic(
+            client,
+            '/thermal/raw',
+            'avr_pcc_2023_interfaces/msg/ThermalFrame'
+        )
+        self.laser_trigger = roslibpy.Service(
+            client,
+            '/laser/fire',
+            'std_srvs/srv/Trigger'
+        )
+        self.laser_set_loop = roslibpy.Service(
+            client,
+            '/laser/set_loop',
+            'std_srvs/srv/SetBool'
+        )
+
+        self.thermal_raw.subscribe(lambda msg: logger.error(msg['data']))
 
     def set_controller(self, enabled: bool) -> None:
         self.joystick.controller_enabled = enabled
@@ -474,21 +509,6 @@ class ThermalViewControlWidget(BaseTabWidget):
 
     def set_rel(self, state: bool) -> None:
         self.joystick.relative_movement = state
-
-    def process_message(self, topic: str, payload: str) -> None:
-        pass
-
-    def process_message_bytes(self, topic: str, payload: bytes) -> None:
-        """
-        Process an incoming message and update the appropriate component
-        """
-        # discard topics we don't recognize
-        if topic != "avr/raw/thermal/reading":
-            return
-
-        success, frame = stream.decode_frame(payload)
-        if success:
-            self.viewer.update_canvas(frame)
 
     def on_controller_r(self, pos: tuple[float, float]) -> None:
         x = deadzone(pos[0], 20)
@@ -505,14 +525,22 @@ class ThermalViewControlWidget(BaseTabWidget):
             return
         self.last_fire = ms
 
-        self.client.emit("/laser/fire~~request", {})
-        # self.zmq_client.zmq_publish("gimbal_fire", "")
+        self.laser_trigger.call(roslibpy.ServiceRequest(),
+                                callback=lambda msg: logger.debug(
+                                    'Fire laser result: ' + msg.get('message', '')
+                                ))
 
     def on_controller_rb(self, state: bool) -> None:
         if state:
-            self.client.emit("/laser/set_loop~~request", {"data": True})
+            self.laser_set_loop.call(roslibpy.ServiceRequest({'data': True}),
+                                     callback=lambda msg: logger.debug(
+                                         'Set Loop result: ' + msg.get('message', '')
+                                     ))
         else:
-            self.client.emit("/laser/set_loop~~request", {"data": False})
+            self.laser_set_loop.call(roslibpy.ServiceRequest({'data': False}),
+                                     callback=lambda msg: logger.debug(
+                                         'Set Loop result: ' + msg.get('message', '')
+                                     ))
 
     def on_controller_circle(self, state: bool) -> None:
         self.auto_checkbox.setChecked(state)

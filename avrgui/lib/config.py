@@ -44,52 +44,20 @@ class _Config:
         self.__write(data)
 
     @property
-    def mqtt_host(self) -> str:
-        return self.__get("mqtt_host", "")
+    def ros_client_host(self) -> str:
+        return self.__get("ros_client_host", "")
 
-    @mqtt_host.setter
-    def mqtt_host(self, value: str) -> None:
-        return self.__set("mqtt_host", value)
-
-    @property
-    def mqtt_port(self) -> int:
-        return self.__get("mqtt_port", 1883)
-
-    @mqtt_port.setter
-    def mqtt_port(self, value: int) -> None:
-        return self.__set("mqtt_port", value)
+    @ros_client_host.setter
+    def ros_client_host(self, value: str) -> None:
+        self.__set("ros_client_host", value)
 
     @property
-    def serial_port(self) -> str:
-        return self.__get("serial_port", "")
+    def ros_client_port(self) -> int:
+        return self.__get("ros_client_port", 1883)
 
-    @serial_port.setter
-    def serial_port(self, value: str) -> None:
-        return self.__set("serial_port", value)
-
-    @property
-    def serial_baud_rate(self) -> int:
-        return self.__get("serial_baud_rate", 115200)
-
-    @serial_baud_rate.setter
-    def serial_baud_rate(self, value: int) -> None:
-        return self.__set("serial_baud_rate", value)
-
-    @property
-    def mavlink_host(self) -> str:
-        return self.__get("mavlink_host", "")
-
-    @mavlink_host.setter
-    def mavlink_host(self, value: str) -> None:
-        return self.__set("mavlink_host", value)
-
-    @property
-    def mavlink_port(self) -> int:
-        return self.__get("mavlink_port", 5670)
-
-    @mavlink_port.setter
-    def mavlink_port(self, value: int) -> None:
-        return self.__set("mavlink_port", value)
+    @ros_client_port.setter
+    def ros_client_port(self, value: int) -> None:
+        self.__set("ros_client_port", value)
 
     @property
     def log_file_directory(self) -> str:
