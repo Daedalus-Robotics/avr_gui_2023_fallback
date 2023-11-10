@@ -160,8 +160,8 @@ class ThermalView(QtWidgets.QWidget):
 
 
 class JoystickWidget(BaseTabWidget):
-    def __init__(self, parent: QtWidgets.QWidget, controller_checkbox: QtWidgets.QCheckBox) -> None:
-        super().__init__(parent)
+    def __init__(self, parent: QtWidgets.QWidget, controller_checkbox: QtWidgets.QCheckBox, ros_client: RosBridgeClient=None) -> None:
+        super().__init__(parent, ros_client)
 
         self.controller_checkbox = controller_checkbox
         self.setFixedSize(300, 300)
@@ -346,8 +346,8 @@ class JoystickWidget(BaseTabWidget):
 
 
 class ThermalViewControlWidget(BaseTabWidget):
-    def __init__(self, parent: QtWidgets.QWidget) -> None:
-        super().__init__(parent)
+    def __init__(self, parent: QtWidgets.QWidget, client: RosBridgeClient) -> None:
+        super().__init__(parent, client)
 
         self.relative_checkbox = None
         self.auto_checkbox = None
@@ -357,12 +357,15 @@ class ThermalViewControlWidget(BaseTabWidget):
         self.streaming_checkbox = None
         self.setWindowTitle("Thermal View/Control")
 
+        # ---- TOPICS ----
+        self.thermal_raw: roslibpy.Topic | None = None
+        self.laser_trigger: roslibpy.Service | None = None
+        self.laser_set_loop: roslibpy.Service | None = None
+
     def build(self) -> None:
         """
         Build the GUI layout
         """
-
-
         layout = QtWidgets.QHBoxLayout(self)
         self.setLayout(layout)
 
@@ -371,7 +374,7 @@ class ThermalViewControlWidget(BaseTabWidget):
         viewer_layout = QtWidgets.QVBoxLayout()
         viewer_groupbox.setLayout(viewer_layout)
 
-        self.viewer = ThermalView(self, self.client)
+        self.viewer = ThermalView(self)
         viewer_layout.addWidget(self.viewer)
 
         # the self.view.update_canvas takes in an 8x8x3 array of pixels from thermal camera

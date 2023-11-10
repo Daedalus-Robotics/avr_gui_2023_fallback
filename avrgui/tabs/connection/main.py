@@ -1,7 +1,7 @@
 from PySide6 import QtWidgets
 
 from ..base import BaseTabWidget
-from .socketio import SocketIOConnectionWidget
+from .rosbridge import RosConnectionWidget
 
 
 class MainConnectionWidget(BaseTabWidget):
@@ -12,6 +12,7 @@ class MainConnectionWidget(BaseTabWidget):
     def __init__(self, parent: QtWidgets.QWidget) -> None:
         super().__init__(parent)
 
+        self.ros_client_connection_widget = None
         self.controller_connect_button = None
         self.setWindowTitle("Connections")
 
@@ -26,9 +27,9 @@ class MainConnectionWidget(BaseTabWidget):
         socketio_layout = QtWidgets.QVBoxLayout()
         socketio_groupbox.setLayout(socketio_layout)
 
-        self.socketio_connection_widget = SocketIOConnectionWidget(self)
-        self.socketio_connection_widget.build()
-        socketio_layout.addWidget(self.socketio_connection_widget)
+        self.ros_client_connection_widget = RosConnectionWidget(self)
+        self.ros_client_connection_widget.build()
+        socketio_layout.addWidget(self.ros_client_connection_widget)
 
         socketio_groupbox.setSizePolicy(
                 QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed

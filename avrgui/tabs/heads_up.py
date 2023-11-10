@@ -23,10 +23,8 @@ STATE_LOOKUP = {
 
 
 class HeadsUpDisplayWidget(BaseTabWidget):
-    def __init__(self, client: SocketIOClient, parent: QtWidgets.QWidget) -> None:
-        super().__init__(parent)
-
-        self.client = client
+    def __init__(self, parent: QtWidgets.QWidget, client: RosBridgeClient) -> None:
+        super().__init__(parent, client)
 
         self.setWindowTitle("HUD")
 

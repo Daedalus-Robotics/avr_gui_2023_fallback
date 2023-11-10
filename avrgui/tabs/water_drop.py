@@ -1,10 +1,12 @@
 import time
 
+import roslibpy
 from PySide6 import QtCore, QtWidgets
+from loguru import logger
 
-from avrgui.lib.graphics_view import GraphicsView
-from avrgui.tabs.base import BaseTabWidget
-import socketio
+from ..lib.graphics_view import GraphicsView
+from .base import BaseTabWidget
+from .connection.rosbridge import RosBridgeClient
 
 
 def map_value(
@@ -16,8 +18,9 @@ def map_value(
 class WaterDropWidget(BaseTabWidget):
     update_position = QtCore.Signal(int)
 
-    def __init__(self, parent: QtWidgets.QWidget) -> None:
-        super().__init__(parent)
+    def __init__(self, parent: QtWidgets.QWidget, ros_client: RosBridgeClient) -> None:
+        print(ros_client)
+        super().__init__(parent, ros_client)
 
         self.last_time = 0
         # self.position_slider: QtWidgets.QSlider | None = None
@@ -37,6 +40,9 @@ class WaterDropWidget(BaseTabWidget):
         self.view_pixels_size = (1280, 720)
         self.view_pixels_total = self.view_pixels_size[0] * self.view_pixels_size[1]
         self.last_closed = True
+
+        # ---- Services -----
+        self.bdu_trigger: roslibpy.Service | None = None
 
     def build(self) -> None:
         layout = QtWidgets.QGridLayout()
@@ -95,6 +101,18 @@ class WaterDropWidget(BaseTabWidget):
 
         layout.addWidget(loading_groupbox, 1, 0)
 
+    def ros_setup(self, client: roslibpy.Ros):
+        super().setup_ros(client)
+
+        print("water test")
+
+        self.bdu_trigger = roslibpy.Service(
+            client,
+            '/bdu/trigger',
+            'std_srvs/srv/Trigger'
+        )
+
+
     def set_controller(self, state: bool) -> None:
         self.controller_enabled = state
         # self.position_slider.setEnabled(not state)
@@ -106,4 +124,10 @@ class WaterDropWidget(BaseTabWidget):
         pass
 
     def trigger_bpu(self) -> None:
-        self.client.emit("/bdu/trigger", {})
+        print(type(self.bdu_trigger))
+        self.bdu_trigger.call(
+            roslibpy.ServiceRequest({}),
+            callback=lambda msg: logger.debug(
+                'Set Loop result: ' + msg.get('message', '')
+                                     )
+        )

@@ -1,6 +1,5 @@
 from typing import Any
-
-import socketio
+import roslibpy
 from PySide6 import QtCore, QtGui, QtWidgets
 from loguru import logger
 
@@ -11,15 +10,14 @@ from ...lib.toast import Toast
 from ...lib.widgets import IntLineEdit
 
 
-class SocketIOClient(QtCore.QObject):
-    connection_state: QtCore.SignalInstance = QtCore.Signal(object)  # type: ignore
+class RosBridgeClient(QtCore.QObject):
+    connection_state: QtCore.SignalInstance = QtCore.Signal(object)
+    ros_connection: QtCore.SignalInstance = QtCore.Signal(object)
 
-    def __init__(self) -> None:
+    def __init__(self, ) -> None:
         super().__init__()
 
-        self.client = socketio.Client()
-        self.client.on("disconnect", self.on_disconnect)
-
+        self.client: roslibpy.Ros | None = None
         self.wanted_state = False
 
     def on_disconnect(self) -> None:
@@ -29,7 +27,7 @@ class SocketIOClient(QtCore.QObject):
         logger.debug("Disconnected from SocketIO server")
         self.connection_state.emit(ConnectionState.disconnected)
         if self.wanted_state is True:
-            Toast.get().send_message.emit("Lost connection to mqtt broker!", 3.0)
+            Toast.get().send_message.emit("Lost connection to ROS bridge!", 3.0)
 
     def login(self, host: str, port: int) -> None:
         """
@@ -44,23 +42,29 @@ class SocketIOClient(QtCore.QObject):
         self.connection_state.emit(ConnectionState.connecting)
 
         try:
-            # try to connect to MQTT server
-            # noinspection HttpUrlsUsage
-            self.client.connect(f"ws://{host}:{port}")  # , transports=['websocket'])
+            # try to connect to ROSBridge server
+            self.client = roslibpy.Ros(host=host, port=port)
+            self.client.run()
+
+            self.client.on("closing", self.on_disconnect)
 
             # save settings
             config.ros_client_host = host
             config.ros_client_port = port
 
             # emit success
-            logger.success("Connected to SocketIO server")
-            self.connection_state.emit(ConnectionState.connected)
-            self.wanted_state = True
+            self.client.on_ready(self._connected)
 
         except Exception as e:
             print(e)
             logger.exception("Connection failed to SocketIO server")
             self.connection_state.emit(ConnectionState.failure)
+
+    def _connected(self):
+        logger.success(f"Connected to SocketIO server {self.client.is_connected}")
+        self.connection_state.emit(ConnectionState.connected)
+        self.ros_connection.emit(self.client)
+        self.wanted_state = True
 
     def logout(self) -> None:
         """
@@ -70,29 +74,29 @@ class SocketIOClient(QtCore.QObject):
         logger.info("Disconnecting from SocketIO server")
         self.connection_state.emit(ConnectionState.disconnecting)
 
-        self.client.disconnect()
+        self.client.terminate()
 
         logger.info("Disconnected from SocketIO server")
         self.connection_state.emit(ConnectionState.disconnected)
 
 
-class SocketIOConnectionWidget(QtWidgets.QWidget):
-    connection_state: QtCore.SignalInstance = QtCore.Signal(object)  # type: ignore
+class RosConnectionWidget(QtWidgets.QWidget):
+    connection_state: QtCore.SignalInstance = QtCore.Signal(object)
     current_host: str = ""
 
     def __init__(self, parent: QtWidgets.QWidget) -> None:
         super().__init__(parent)
 
-        self.socketio_menu_state = None
-        self.socketio_menu_connect = None
-        self.socketio_menu = None
+        self.ros_client_menu_state = None
+        self.ros_client_menu_connect = None
+        self.ros_client_menu = None
         self.disconnect_button = None
         self.connect_button = None
         self.state_label = None
         self.port_line_edit = None
         self.hostname_line_edit = None
-        self.socketio_client = SocketIOClient()
-        self.socketio_client.connection_state.connect(self.set_connected_state)
+        self.ros_client = RosBridgeClient()
+        self.ros_client.connection_state.connect(self.set_connected_state)
 
     def build(self) -> None:
         """
@@ -138,51 +142,51 @@ class SocketIOConnectionWidget(QtWidgets.QWidget):
         self.hostname_line_edit.returnPressed.connect(self.connect_button.click)
         self.port_line_edit.returnPressed.connect(self.connect_button.click)
         self.connect_button.clicked.connect(  # type: ignore
-            lambda: self.socketio_client.login(
+            lambda: self.ros_client.login(
                 self.hostname_line_edit.text(), int(self.port_line_edit.text())
             )
         )
-        self.disconnect_button.clicked.connect(self.socketio_client.logout)  # type: ignore
+        self.disconnect_button.clicked.connect(self.ros_client.logout)  # type: ignore
 
-        self.socketio_menu = QtWidgets.QMenu("SocketIO")
+        self.ros_client_menu = QtWidgets.QMenu("ROS Bridge ")
 
-        self.socketio_menu_connect = QtGui.QAction("Connect")
+        self.ros_client_menu_connect = QtGui.QAction("Connect")
 
-        def mqtt_menu_connect_triggered() -> None:
-            if self.socketio_client.connection_state == ConnectionState.connected:
-                self.socketio_client.logout()
-                self.socketio_menu_connect.setChecked(False)
+        def ros_client_menu_connect_triggered() -> None:
+            if self.ros_client.connection_state == ConnectionState.connected:
+                self.ros_client.logout()
+                self.ros_client_menu_connect.setChecked(False)
             else:
                 try:
                     port = int(self.port_line_edit.text())
                 except ValueError:
                     return
-                self.socketio_client.login(self.hostname_line_edit.text(), port)
-                self.socketio_menu_connect.setChecked(True)
+                self.ros_client.login(self.hostname_line_edit.text(), port)
+                self.ros_client_menu_connect.setChecked(True)
 
-        self.socketio_menu_connect.triggered.connect(mqtt_menu_connect_triggered)
-        self.socketio_menu_connect.setCheckable(True)
-        self.socketio_menu.addAction(self.socketio_menu_connect)
+        self.ros_client_menu_connect.triggered.connect(ros_client_menu_connect_triggered)
+        self.ros_client_menu_connect.setCheckable(True)
+        self.ros_client_menu.addAction(self.ros_client_menu_connect)
 
-        self.socketio_menu_state = QtGui.QAction("Disconnected")
-        self.socketio_menu_state.setEnabled(False)
-        self.socketio_menu.addAction(self.socketio_menu_state)
+        self.ros_client_menu_state = QtGui.QAction("Disconnected")
+        self.ros_client_menu_state.setEnabled(False)
+        self.ros_client_menu.addAction(self.ros_client_menu_state)
 
-        def socketio_menu_state(state: ConnectionState) -> None:
+        def ros_client_menu_state(state: ConnectionState) -> None:
             if state == ConnectionState.connected:
-                self.socketio_menu_connect.setChecked(True)
-                self.socketio_menu_state.setText("Connected")
+                self.ros_client_menu_connect.setChecked(True)
+                self.ros_client_menu_state.setText("Connected")
             elif state == ConnectionState.disconnected:
-                self.socketio_menu_connect.setChecked(False)
-                self.socketio_menu_state.setText("Disconnected")
+                self.ros_client_menu_connect.setChecked(False)
+                self.ros_client_menu_state.setText("Disconnected")
             elif state == ConnectionState.connecting:
-                self.socketio_menu_connect.setChecked(True)
-                self.socketio_menu_state.setText("Connecting")
+                self.ros_client_menu_connect.setChecked(True)
+                self.ros_client_menu_state.setText("Connecting")
             elif state == ConnectionState.disconnecting:
-                self.socketio_menu_connect.setChecked(False)
-                self.socketio_menu_state.setText("Disconnecting")
+                self.ros_client_menu_connect.setChecked(False)
+                self.ros_client_menu_state.setText("Disconnecting")
 
-        self.socketio_client.connection_state.connect(socketio_menu_state)
+        self.ros_client.connection_state.connect(ros_client_menu_state)
 
     def set_connected_state(self, connection_state: ConnectionState) -> None:
         """
