@@ -60,7 +60,7 @@ class RosBridgeClient(QtCore.QObject):
             logger.exception("Connection failed to SocketIO server")
             self.connection_state.emit(ConnectionState.failure)
 
-    def _connected(self):
+    def _connected(self) -> None:
         logger.success(f"Connected to SocketIO server {self.client.is_connected}")
         self.connection_state.emit(ConnectionState.connected)
         self.ros_connection.emit(self.client)
@@ -74,7 +74,7 @@ class RosBridgeClient(QtCore.QObject):
         logger.info("Disconnecting from SocketIO server")
         self.connection_state.emit(ConnectionState.disconnecting)
 
-        self.client.terminate()
+        self.client.close()
 
         logger.info("Disconnected from SocketIO server")
         self.connection_state.emit(ConnectionState.disconnected)

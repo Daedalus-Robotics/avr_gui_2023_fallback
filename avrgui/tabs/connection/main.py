@@ -32,7 +32,7 @@ class MainConnectionWidget(BaseTabWidget):
         socketio_layout.addWidget(self.ros_client_connection_widget)
 
         socketio_groupbox.setSizePolicy(
-                QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed
+            QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed
         )
         layout.addWidget(socketio_groupbox)
 
