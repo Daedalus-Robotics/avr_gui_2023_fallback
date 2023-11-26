@@ -332,7 +332,7 @@ class WaterDropPane(QtWidgets.QWidget):
         if self.log_file is not None:
             self.log_to_file(f'Closed file at {int(time.time())} (Ran for {int(time.time() - self.log_start_time)}s)')
             self.log_file.close()
-            Toast.get().show_message(f'Saved log to: {self.log_file.name}', 2)
+            Toast.get().show_message(f'Saved log to: {self.log_file.name}', 4)
             self.log_file = None
             self.controller.mic_button.led_state = False
 
