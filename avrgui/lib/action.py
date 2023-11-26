@@ -41,26 +41,33 @@ class Action:
         self.feedback_subscriber.subscribe(self._feedback)
         self.result_subscriber.subscribe(self._result)
 
-        self.running = False
+        self._running = False
+        self._cancel_requested = False
+
+        cancel = roslibpy.ServiceRequest({'id': self.id})
+        self.cancel_client.call(
+            cancel
+        )
 
     def send_goal(self, goal_data: dict[str, Any]) -> None:
-        if not self.running:
+        if not self._running:
             data = json.dumps(goal_data)
             goal = roslibpy.ServiceRequest({'id': self.id, 'data': data})
             self.goal_client.call(
                 goal,
                 lambda msg: print(f'Sent goal for id: {self.id}')
             )
-            self.running = True
+            self._running = True
 
     def cancel(self) -> None:
-        if self.running:
+        if self._running:
             cancel = roslibpy.ServiceRequest({'id': self.id})
             self.cancel_client.call(
-                cancel,
-                lambda msg: print(f'Sent cancel request for id: {self.id}')
+                cancel
             )
-        self.running = False
+            print(f'Sent cancel request for id: {self.id}')
+        self._running = False
+        self._cancel_requested = True
 
     def _feedback(self, msg: Any) -> None:
         if msg['id'] == self.id:
@@ -69,16 +76,19 @@ class Action:
             except json.JSONDecodeError:
                 print(f'Failed to decode json for feedback on id: {self.id}')
             else:
-                if self.running:
+                if self._running:
                     self._feedback_callback(data)
 
     def _result(self, msg: Any) -> None:
-        self.running = False
-        if msg['id'] == self.id:
-            try:
-                data = json.loads(msg['data'])
-            except json.JSONDecodeError:
-                print(f'Failed to decode json for result on id: {self.id}')
-            else:
-                if self.running:
-                    self._result_callback(data)
+        was_running = self._running
+        if not self._cancel_requested:
+            self._running = False
+            if msg['id'] == self.id:
+                try:
+                    data = json.loads(msg['data'])
+                except json.JSONDecodeError:
+                    print(f'Failed to decode json for result on id: {self.id}')
+                else:
+                    if was_running:
+                        self._result_callback(data)
+        self._cancel_requested = False
