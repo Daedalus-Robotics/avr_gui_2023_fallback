@@ -17,7 +17,6 @@ def map_value(
 
 class WaterDropWidget(BaseTabWidget):
     def __init__(self, parent: QtWidgets.QWidget, ros_client: RosBridgeClient) -> None:
-        print(ros_client)
         super().__init__(parent, ros_client)
 
         self.last_time = 0
