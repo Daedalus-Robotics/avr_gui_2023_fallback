@@ -7,8 +7,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from loguru import logger
 from playsound import playsound
 
-from avrgui.lib.controller.controller import Controller
-from avrgui.lib.controller.pythondualsense import TriggerMode
+from avrgui.lib.controller.pythondualsense import Dualsense, TriggerMode, find_devices
 from avrgui.lib.enums import ConnectionState
 from avrgui.lib.qt_icon import set_icon
 from avrgui.lib.toast import Toast
@@ -23,7 +22,7 @@ from avrgui.tabs.thermal_view_control import ThermalViewControlWidget
 from avrgui.tabs.vmc_telemetry import VMCTelemetryWidget
 from avrgui.tabs.water_drop import WaterDropWidget
 
-controller = Controller()
+controller = Dualsense()
 
 
 class TabBar(QtWidgets.QTabBar):

@@ -111,9 +111,6 @@ def verify_checksum(input_report: list[int]) -> bool:
     # Get the crc32 hash of the first 74 values in the report
     calculated_crc = get_checksum(input_report[:-4], 0xA1)
 
-    print(included_crc)
-    print(calculated_crc)
-
     return included_crc == calculated_crc
 
 
