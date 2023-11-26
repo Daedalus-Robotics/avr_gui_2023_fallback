@@ -301,7 +301,7 @@ class CameraViewWidget(BaseTabWidget):
                     pass
 
     def mqtt_connection_state(self, state: ConnectionState):
-        if state == ConnectionState.connected:
+        if state == ConnectionState.CONNECTED:
             # if not self.is_connected and self.set_streaming(True):
             #     self.send_message("avr/gui/sound/beep", {})
             #     Toast.get().send_message.emit("Connecting to frame server", 2)

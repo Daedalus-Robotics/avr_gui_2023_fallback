@@ -9,7 +9,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from loguru import logger
 from playsound import playsound
 
-from avrgui.lib.controller.pythondualsense import Dualsense, TriggerMode, find_devices
+from avrgui.lib.controller.pythondualsense import Dualsense, TriggerMode, find_devices, BrightnessLevel
 from avrgui.lib.enums import ConnectionState
 from avrgui.lib.qt_icon import set_icon
 from avrgui.lib.toast import Toast
@@ -25,6 +25,7 @@ from avrgui.tabs.vmc_telemetry import VMCTelemetryWidget
 from avrgui.tabs.water_drop import WaterDropWidget
 
 controller = Dualsense()
+was_connected = False
 
 
 class TabBar(QtWidgets.QTabBar):
@@ -364,19 +365,22 @@ class MainWindow(QtWidgets.QWidget):
         )
 
         # set initial state
-        self.set_mqtt_connected_state(ConnectionState.disconnected)
-        self.set_serial_connected_state(ConnectionState.disconnected)
+        self.set_mqtt_connected_state(ConnectionState.DISCONNECTED)
+        self.set_serial_connected_state(ConnectionState.DISCONNECTED)
 
-        controller.right_trigger.trigger_mode = TriggerMode.SECTION
+        controller.right_trigger.trigger_mode = TriggerMode.NO_RESISTANCE
         controller.right_trigger.trigger_section = (75, 120)
         controller.right_trigger.trigger_force = 255
 
-        controller.left_trigger.trigger_mode = TriggerMode.SECTION
+        controller.left_trigger.trigger_mode = TriggerMode.NO_RESISTANCE
         controller.left_trigger.trigger_section = (75, 120)
         controller.left_trigger.trigger_force = 255
 
+        controller.player_led.brightness = BrightnessLevel.HIGH
+        controller.player_led.player_num = 0
+
     def set_mqtt_connected_state(self, connection_state: ConnectionState) -> None:
-        self.mqtt_connected = connection_state == ConnectionState.connected
+        self.mqtt_connected = connection_state == ConnectionState.CONNECTED
 
         # list of widgets that are mqtt connected
         widgets = [
@@ -411,7 +415,7 @@ class MainWindow(QtWidgets.QWidget):
             self.heads_up_widget.clear()
 
     def set_serial_connected_state(self, connection_state: ConnectionState) -> None:
-        self.serial_connected = connection_state == ConnectionState.connected
+        self.serial_connected = connection_state == ConnectionState.CONNECTED
 
         # deal with pcc tester
         idx = self.tabs.indexOf(self.pcc_tester_widget)
@@ -539,8 +543,48 @@ def main() -> None:
     w.show()
     splash.finish(w)
 
+    def set_controller_outputs() -> None:
+        global was_connected
+        connected = False
+        exists = w.main_connection_widget.ros_client_connection_widget.ros_client.client is not None
+        if exists:
+            connected = w.main_connection_widget.ros_client_connection_widget.ros_client.client.is_connected
+        if connected:
+            controller.right_trigger.trigger_mode = TriggerMode.SECTION
+            controller.left_trigger.trigger_mode = TriggerMode.SECTION
+            controller.player_led.player_num = 3
+        else:
+            controller.right_trigger.trigger_mode = TriggerMode.NO_RESISTANCE
+            controller.left_trigger.trigger_mode = TriggerMode.NO_RESISTANCE
+            controller.player_led.player_num = 0
+
+        was_connected = connected
+
+    def alert_buzz() -> None:
+        controller.right_rumble.value = 255
+        controller.left_rumble.value = 255
+        time.sleep(0.1)
+        controller.right_rumble.value = 0
+        controller.left_rumble.value = 0
+        time.sleep(0.1)
+        controller.right_rumble.value = 255
+        controller.left_rumble.value = 255
+        time.sleep(0.1)
+        controller.right_rumble.value = 0
+        controller.left_rumble.value = 0
+
+    def connection_callback(connection_state: ConnectionState) -> None:
+        set_controller_outputs()
+        if connection_state == ConnectionState.CONNECTED:
+            Thread(target=alert_buzz, daemon=True).start()
+        elif connection_state == ConnectionState.FAILURE:
+            Toast.get().show_message('Failed to connect to rosbridge', 1)
+
+    w.main_connection_widget.ros_client_connection_widget.connection_state.connect(connection_callback)
+
     def reconnect_controller() -> None:
         while True:
+            set_controller_outputs()
             if not controller.is_open:
                 if len(find_devices()) > 0:
                     controller.open()

@@ -25,7 +25,7 @@ class RosBridgeClient(QtCore.QObject):
         Callback when the SocketIO client disconnects
         """
         logger.debug("Disconnected from SocketIO server")
-        self.connection_state.emit(ConnectionState.disconnected)
+        self.connection_state.emit(ConnectionState.DISCONNECTED)
         if self.wanted_state is True:
             Toast.get().send_message.emit("Lost connection to ROS bridge!", 3.0)
 
@@ -39,7 +39,7 @@ class RosBridgeClient(QtCore.QObject):
             return
 
         logger.info(f"Connecting to SocketIO server at {host}:{port}")
-        self.connection_state.emit(ConnectionState.connecting)
+        self.connection_state.emit(ConnectionState.CONNECTING)
 
         try:
             # try to connect to ROSBridge server
@@ -58,11 +58,11 @@ class RosBridgeClient(QtCore.QObject):
         except Exception as e:
             print(e)
             logger.exception("Connection failed to SocketIO server")
-            self.connection_state.emit(ConnectionState.failure)
+            self.connection_state.emit(ConnectionState.FAILURE)
 
     def _connected(self) -> None:
         logger.success(f"Connected to SocketIO server {self.client.is_connected}")
-        self.connection_state.emit(ConnectionState.connected)
+        self.connection_state.emit(ConnectionState.CONNECTED)
         self.ros_connection.emit(self.client)
         self.wanted_state = True
 
@@ -72,12 +72,12 @@ class RosBridgeClient(QtCore.QObject):
         """
         self.wanted_state = False
         logger.info("Disconnecting from SocketIO server")
-        self.connection_state.emit(ConnectionState.disconnecting)
+        self.connection_state.emit(ConnectionState.DISCONNECTING)
 
         self.client.close()
 
         logger.info("Disconnected from SocketIO server")
-        self.connection_state.emit(ConnectionState.disconnected)
+        self.connection_state.emit(ConnectionState.DISCONNECTED)
 
 
 class RosConnectionWidget(QtWidgets.QWidget):
@@ -133,7 +133,7 @@ class RosConnectionWidget(QtWidgets.QWidget):
         layout.addLayout(bottom_layout)
 
         # set starting state
-        self.set_connected_state(ConnectionState.disconnected)
+        self.set_connected_state(ConnectionState.DISCONNECTED)
 
         self.hostname_line_edit.setText(config.ros_client_host)
         self.port_line_edit.setText(str(config.ros_client_port))
@@ -153,7 +153,7 @@ class RosConnectionWidget(QtWidgets.QWidget):
         self.ros_client_menu_connect = QtGui.QAction("Connect")
 
         def ros_client_menu_connect_triggered() -> None:
-            if self.ros_client.connection_state == ConnectionState.connected:
+            if self.ros_client.connection_state == ConnectionState.CONNECTED:
                 self.ros_client.logout()
                 self.ros_client_menu_connect.setChecked(False)
             else:
@@ -173,16 +173,16 @@ class RosConnectionWidget(QtWidgets.QWidget):
         self.ros_client_menu.addAction(self.ros_client_menu_state)
 
         def ros_client_menu_state(state: ConnectionState) -> None:
-            if state == ConnectionState.connected:
+            if state == ConnectionState.CONNECTED:
                 self.ros_client_menu_connect.setChecked(True)
                 self.ros_client_menu_state.setText("Connected")
-            elif state == ConnectionState.disconnected:
+            elif state == ConnectionState.DISCONNECTED:
                 self.ros_client_menu_connect.setChecked(False)
                 self.ros_client_menu_state.setText("Disconnected")
-            elif state == ConnectionState.connecting:
+            elif state == ConnectionState.CONNECTING:
                 self.ros_client_menu_connect.setChecked(True)
                 self.ros_client_menu_state.setText("Connecting")
-            elif state == ConnectionState.disconnecting:
+            elif state == ConnectionState.DISCONNECTING:
                 self.ros_client_menu_connect.setChecked(False)
                 self.ros_client_menu_state.setText("Disconnecting")
 
@@ -193,17 +193,17 @@ class RosConnectionWidget(QtWidgets.QWidget):
         Set the connected state of the SocketIO connection widget elements.
         """
         color_lookup = {
-            ConnectionState.connected: "Green",
-            ConnectionState.connecting: "DarkGoldenRod",
-            ConnectionState.disconnecting: "DarkGoldenRod",
-            ConnectionState.disconnected: "Red",
-            ConnectionState.failure: "Red",
+            ConnectionState.CONNECTED: "Green",
+            ConnectionState.CONNECTING: "DarkGoldenRod",
+            ConnectionState.DISCONNECTING: "DarkGoldenRod",
+            ConnectionState.DISCONNECTED: "Red",
+            ConnectionState.FAILURE: "Red",
         }
 
-        connected = connection_state == ConnectionState.connected
+        connected = connection_state == ConnectionState.CONNECTED
         disconnected = connection_state in [
-            ConnectionState.failure,
-            ConnectionState.disconnected,
+            ConnectionState.FAILURE,
+            ConnectionState.DISCONNECTED,
         ]
 
         self.state_label.setText(
