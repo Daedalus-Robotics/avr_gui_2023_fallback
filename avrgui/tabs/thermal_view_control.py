@@ -2,12 +2,12 @@ import json
 import math
 import time
 from enum import Enum, auto
-from typing import Any
+from typing import Any, List
 
 import colour
 import numpy as np
 import roslibpy
-import socketio
+import scipy
 from PySide6 import QtCore, QtGui, QtWidgets
 from loguru import logger
 
@@ -15,6 +15,7 @@ from .base import BaseTabWidget
 from .connection.rosbridge import RosBridgeClient
 from ..lib import stream
 from ..lib.graphics_label import GraphicsLabel
+from ..lib.utils import constrain
 
 
 def map_value(
@@ -39,7 +40,7 @@ class Direction(Enum):
 
 
 class ThermalView(QtWidgets.QWidget):
-    update_frame = QtCore.Signal(QtGui.QPixmap)
+    update_frame = QtCore.Signal(object)
 
     def __init__(self, parent: QtWidgets.QWidget) -> None:
         super().__init__(parent)
@@ -49,7 +50,7 @@ class ThermalView(QtWidgets.QWidget):
         self.height_ = self.width_
 
         # pixels within canvas
-        self.pixels_x = 8
+        self.pixels_x = 32
         self.pixels_y = self.pixels_x
 
         self.pixel_width = self.width_ / self.pixels_x
@@ -87,7 +88,7 @@ class ThermalView(QtWidgets.QWidget):
         self.colors = [
             (int(c.red * 255), int(c.green * 255), int(c.blue * 255))
             for c in list(
-                    colour.Color("indigo").range_to(colour.Color("red"), self.COLORDEPTH)
+                colour.Color("indigo").range_to(colour.Color("red"), self.COLORDEPTH)
             )
         ]
 
@@ -95,18 +96,20 @@ class ThermalView(QtWidgets.QWidget):
         layout = QtWidgets.QVBoxLayout()
         self.setLayout(layout)
 
-        # self.canvas = QtWidgets.QGraphicsScene()
-        # self.view = QtWidgets.QGraphicsView(self.canvas)
-        # self.view.setGeometry(0, 0, self.width_, self.height_)
-        self.view = GraphicsLabel((1, 1))
-        self.view.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.MinimumExpanding)
-        self.view.sizePolicy().setHeightForWidth(True)
-        self.view.setPixmap(QtGui.QPixmap("assets/blank_square.png"))
+        self.canvas = QtWidgets.QGraphicsScene()
+        self.view = QtWidgets.QGraphicsView(self.canvas)
+        self.view.setGeometry(0, 0, self.width_, self.height_)
+        # self.view = GraphicsLabel((1, 1))
+        # self.view.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.MinimumExpanding)
+        # self.view.sizePolicy().setHeightForWidth(True)
+        # self.view.setPixmap(QtGui.QPixmap("assets/blank_square.png"))
 
         layout.addWidget(self.view)
 
         # need a bit of padding for the edges of the canvas
         self.setFixedSize(self.width_ + 50, self.height_ + 50)
+
+        self.update_frame.connect(self.update_canvas_2)
 
     def set_temp_range(self, mintemp: float, maxtemp: float) -> None:
         self.MINTEMP = mintemp
@@ -124,41 +127,44 @@ class ThermalView(QtWidgets.QWidget):
             self.pixel_width = self.width_ / self.pixels_x
             self.pixel_height = self.height_ / self.pixels_y
 
-    def update_canvas(self, frame: np.ndarray) -> None:
-        # float_pixels = [
-        #     map_value(p, self.MINTEMP, self.MAXTEMP, 0, self.COLORDEPTH - 1)
-        #     for p in pixels
-        # ]
+    def update_canvas(self, pixels: List[float]) -> None:
+        float_pixels = [
+            map_value(p, self.MINTEMP, self.MAXTEMP, 0, self.COLORDEPTH - 1)
+            for p in pixels
+        ]
 
-        # bicubic = scipy.interpolate.griddata(
-        #         self.points, float_pixels, (self.grid_x, self.grid_y), method = "cubic"
-        # )
-        # print(frame.shape)
-        # print(frame)
-        # self.check_size(frame.shape[0], frame.shape[1])
+        float_pixels_matrix = np.reshape(float_pixels, (self.camera_x, self.camera_y))
+        rotated_float_pixels = np.rot90(np.rot90(float_pixels_matrix))
+        rotated_float_pixels = rotated_float_pixels.flatten()
 
-        # pen = QtGui.QPen(QtCore.Qt.NoPen)
-        # self.canvas.clear()
-        #
-        # y = 0
-        # for row in frame:
-        #     x = 0
-        #     for pixel in row:
-        #         x += 1
-        #         brush = QtGui.QBrush(QtGui.QColor(pixel[2], pixel[1], pixel[0], 255))
-        #         self.canvas.addRect(
-        #                 self.pixel_width * x,
-        #                 self.pixel_height * y,
-        #                 self.pixel_width,
-        #                 self.pixel_height,
-        #                 pen,
-        #                 brush
-        #         )
-        #     y += 1
-        # cv2.imwrite("hello.png", frame)
-        pixmap = stream.convert_cv_qt(frame, (self.view.width(), self.view.height()))
-        self.view.setPixmap(pixmap)
-        self.update_frame.emit(pixmap)
+        bicubic = scipy.interpolate.griddata(
+            self.points,
+            rotated_float_pixels,
+            (self.grid_x, self.grid_y),
+            method="cubic",
+        )
+
+        self.update_frame.emit(bicubic)
+
+    def update_canvas_2(self, frame: np.ndarray):
+        pen = QtGui.QPen(QtCore.Qt.PenStyle.NoPen)
+        self.canvas.clear()
+
+        for ix, row in enumerate(frame):
+            for jx, pixel in enumerate(row):
+                brush = QtGui.QBrush(
+                    QtGui.QColor(
+                        *self.colors[int(constrain(pixel, 0, self.COLORDEPTH - 1))]
+                    )
+                )
+                self.canvas.addRect(
+                    self.pixel_width * jx,
+                    self.pixel_height * ix,
+                    self.pixel_width,
+                    self.pixel_height,
+                    pen,
+                    brush,
+                )
 
 
 class JoystickWidget(BaseTabWidget):
@@ -262,10 +268,10 @@ class JoystickWidget(BaseTabWidget):
     def paintEvent(self, event) -> None:
         painter = QtGui.QPainter(self)
         bounds = QtCore.QRectF(
-                -self.__maxDistance,
-                -self.__maxDistance,
-                self.__maxDistance * 2,
-                self.__maxDistance * 2
+            -self.__maxDistance,
+            -self.__maxDistance,
+            self.__maxDistance * 2,
+            self.__maxDistance * 2
         ).translated(self._center())
         painter.drawEllipse(bounds)
         painter.setBrush(QtCore.Qt.GlobalColor.black)
@@ -331,14 +337,14 @@ class JoystickWidget(BaseTabWidget):
     def set_pos(self, x: float, y: float) -> None:
         if self.controller_enabled:
             self.movingOffset = self._bound_joystick(
-                    QtCore.QPoint(
-                            int(
-                                    x + self._center().x() - self.__maxDistance
-                            ),
-                            int(
-                                    y + self._center().y() - self.__maxDistance
-                            )
+                QtCore.QPoint(
+                    int(
+                        x + self._center().x() - self.__maxDistance
+                    ),
+                    int(
+                        y + self._center().y() - self.__maxDistance
                     )
+                )
             )
             self.update()
 
@@ -411,19 +417,19 @@ class ThermalViewControlWidget(BaseTabWidget):
         sub_joystick_layout.addWidget(self.joystick)
 
         controller_enable_checkbox.stateChanged.connect(
-                lambda state: self.set_controller(state > 0)
+            lambda state: self.set_controller(state > 0)
         )
         joystick_layout.addWidget(controller_enable_checkbox)
 
         self.relative_checkbox = QtWidgets.QCheckBox("Relative Movement")
         self.relative_checkbox.stateChanged.connect(
-                lambda state: self.set_rel(state > 0)
+            lambda state: self.set_rel(state > 0)
         )
         joystick_layout.addWidget(self.relative_checkbox)
 
         self.auto_checkbox = QtWidgets.QCheckBox("Enable Auto Aim")
         self.auto_checkbox.stateChanged.connect(
-                lambda state: self.set_auto(state > 0)
+            lambda state: self.set_auto(state > 0)
         )
         joystick_layout.addWidget(self.auto_checkbox)
 
@@ -449,24 +455,24 @@ class ThermalViewControlWidget(BaseTabWidget):
         # )
 
         fire_laser_button.clicked.connect(
-                lambda: self.laser_trigger.call(roslibpy.ServiceRequest(),
-                                                callback=lambda msg: logger.debug(
-                                                    'Fire laser result: ' + msg.get('message', '')
-                                                ))
+            lambda: self.laser_trigger.call(roslibpy.ServiceRequest(),
+                                            callback=lambda msg: logger.debug(
+                                                'Fire laser result: ' + msg.get('message', '')
+                                            ))
         )
 
         laser_on_button.clicked.connect(
-                lambda: self.laser_set_loop.call(roslibpy.ServiceRequest({'data': True}),
-                                                 callback=lambda msg: logger.debug(
-                                                     'Set Loop result: ' + msg.get('message', '')
-                                                 ))
+            lambda: self.laser_set_loop.call(roslibpy.ServiceRequest({'data': True}),
+                                             callback=lambda msg: logger.debug(
+                                                 'Set Loop result: ' + msg.get('message', '')
+                                             ))
         )
 
         laser_off_button.clicked.connect(
-                lambda: self.laser_set_loop.call(roslibpy.ServiceRequest({'data': False}),
-                                                 callback=lambda msg: logger.debug(
-                                                     'Set Loop results: ' + msg.get('message', '')
-                                                 ))
+            lambda: self.laser_set_loop.call(roslibpy.ServiceRequest({'data': False}),
+                                             callback=lambda msg: logger.debug(
+                                                 'Set Loop results: ' + msg.get('message', '')
+                                             ))
         )
 
         # kill_button.clicked.connect(
@@ -497,7 +503,7 @@ class ThermalViewControlWidget(BaseTabWidget):
             'std_srvs/srv/SetBool'
         )
 
-        self.thermal_raw.subscribe(lambda msg: logger.error(msg['data']))
+        self.thermal_raw.subscribe(lambda msg: self.viewer.update_canvas(msg['data']))
 
     def set_controller(self, enabled: bool) -> None:
         self.joystick.controller_enabled = enabled
@@ -514,8 +520,8 @@ class ThermalViewControlWidget(BaseTabWidget):
         x = deadzone(pos[0], 20)
         y = deadzone(pos[1], 20)
         self.joystick.set_pos(
-                map_value(x, -130, 130, 0, 200),
-                map_value(y, -130, 130, 0, 200)
+            map_value(x, -130, 130, 0, 200),
+            map_value(y, -130, 130, 0, 200)
         )
 
     def on_controller_rt(self) -> None:
