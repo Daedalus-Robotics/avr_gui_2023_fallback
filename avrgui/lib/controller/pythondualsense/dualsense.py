@@ -460,32 +460,9 @@ class Dualsense:
         report[1] |= left_trigger_flag
         report[22:26] = left_trigger_report
 
-        # For testing
-        # report[1] = 0xff
-        # report[22] = 0x26
-        # report[23] = 0x0
-        # report[24] = 0x02 if True else 0x00
-        # report[25] = 0x5
-        # report[26] = 0xff - 0x5
-        # report[27] = 0xff
-        # report[28] = 0x8
-
-        # I have no idea what these values do but the triggers vibrate when I set some of them
-        # report[26] = self.val26  # ?
-        # report[27] = self.val27  # this seems to be the start of the vibration zone, but it only works sometimes
-        # report[28] = self.val28  # this might be something else about the vibration zone, but it's not the end
-        # report[31] = self.val31  # This seems to be the intensity of the vibration
-        # I don't know if this is actual functionality or damaging to the controller
-
         right_trigger_flag, right_trigger_report = self.right_trigger.get_report()
         report[1] |= right_trigger_flag
         report[11:15] = right_trigger_report
-
-        # I have no idea what these values do
-        # report[15]
-        # report[16]
-        # report[17]
-        # report[20]
 
         touchpad_led_flag, touchpad_led_report, led_flag, touchpad_led_mode = self.touchpad.get_report()
         report[2] |= touchpad_led_flag
@@ -527,14 +504,5 @@ class Dualsense:
             report.insert(1, 0x00)
             report.insert(2, 0x10)
             add_checksum(report)
-
-        # report[1] |= self.add_flag1
-        # report[2] |= self.add_flag2
-        # report[5] = self.val5
-        # report[6] = self.val6
-        # report[7] = self.val7
-        # report[8] |= self.val8
-        # report[10] |= self.val10
-        # report[38] |= self.val38
 
         return report
