@@ -1,8 +1,9 @@
 import datetime
 import json
+import os.path
 import time
 from threading import Thread
-from typing import Any
+from typing import Any, TextIO
 
 import colour
 import numpy as np
@@ -13,9 +14,11 @@ from loguru import logger
 
 from ..lib import utils
 from ..lib.action import Action
+from ..lib.controller.pythondualsense import Dualsense, BrightnessLevel
 from ..lib.graphics_label import GraphicsLabel
 from .base import BaseTabWidget
 from .connection.rosbridge import RosBridgeClient
+from ..lib.toast import Toast
 from ..lib.utils import constrain
 
 RED_COLOR = "red"
@@ -31,8 +34,9 @@ STATE_LOOKUP = {
 
 
 class HeadsUpDisplayWidget(BaseTabWidget):
-    def __init__(self, parent: QtWidgets.QWidget, client: RosBridgeClient) -> None:
+    def __init__(self, parent: QtWidgets.QWidget, client: RosBridgeClient, controller) -> None:
         super().__init__(parent, client)
+        self.controller = controller
 
         self.setWindowTitle("HUD")
 
@@ -52,7 +56,7 @@ class HeadsUpDisplayWidget(BaseTabWidget):
         camera_groupbox.setLayout(camera_layout)
         camera_groupbox.setFixedWidth(500)
 
-        self.zed_pane = ZEDCameraPane(self)
+        # self.zed_pane = ZEDCameraPane(self)
         # camera_layout.addWidget(self.zed_pane)
         self.thermal_pane = ThermalCameraPane(self)
         camera_layout.addWidget(self.thermal_pane)
@@ -64,11 +68,11 @@ class HeadsUpDisplayWidget(BaseTabWidget):
         control_layout = QtWidgets.QVBoxLayout()
         control_groupbox.setLayout(control_layout)
 
-        self.water_pane = WaterDropPane(self)
+        self.water_pane = WaterDropPane(self, self.controller)
         control_layout.addWidget(self.water_pane)
 
-        self.gimbal_pane = GimbalPane(self)
-        control_layout.addWidget(self.gimbal_pane)
+        # self.gimbal_pane = GimbalPane(self)
+        # control_layout.addWidget(self.gimbal_pane)
 
         self.telemetry_pane = TelemetryPane(self)
         control_layout.addWidget(self.telemetry_pane)
@@ -116,7 +120,7 @@ class ZEDCameraPane(QtWidgets.QWidget):
         connection_button.clicked.connect(self.toggle_connection)
         zed_layout.addWidget(connection_button)
 
-        layout.addWidget(zed_groupbox)
+        # layout.addWidget(zed_groupbox)
 
         self.update_frame.connect(self.view.setPixmap)
 
@@ -212,8 +216,9 @@ class WaterDropPane(QtWidgets.QWidget):
     move_dropper = QtCore.Signal(int)
     auto_done = QtCore.Signal()
 
-    def __init__(self, parent: QtWidgets.QWidget) -> None:
+    def __init__(self, parent: QtWidgets.QWidget, controller: Dualsense) -> None:
         super().__init__(parent)
+        self.controller = controller
         self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.MinimumExpanding)
 
         self.enabled_atag = False
@@ -233,37 +238,39 @@ class WaterDropPane(QtWidgets.QWidget):
         water_drop_groupbox.setMinimumWidth(100)
 
         self.trigger_button = QtWidgets.QPushButton("Trigger")
-        self.trigger_button.clicked.connect(self.trigger_bdu_full)
+        self.trigger_button.clicked.connect(self.trigger_bdu)
         water_drop_layout.addWidget(self.trigger_button)
 
-        # self.atag_enable_checkbox = QtWidgets.QCheckBox("Enable Apriltags")
-        #
-        # self.atag_enable_checkbox.stateChanged.connect(
-        #     self.auton_blink_trigger
-        # )
-        # water_drop_layout.addRow("Enable:", self.atag_enable_checkbox)
-        #
-        # self.atag_enable_drop_checkbox = QtWidgets.QCheckBox("Enable Apriltags For Drop")
-        #
-        # self.atag_enable_drop_checkbox.stateChanged.connect(
-        #     self.auton_drop_trigger
-        # )
-        # water_drop_layout.addRow("Enable Drop:", self.atag_enable_drop_checkbox)
+        self.full_trigger_button = QtWidgets.QPushButton("Full Trigger")
+        self.full_trigger_button.clicked.connect(self.trigger_bdu_full)
+        water_drop_layout.addWidget(self.full_trigger_button)
+
+        self.auton_radio_group = QtWidgets.QButtonGroup()
 
         self.atag_radio_button = QtWidgets.QRadioButton()
+        self.auton_radio_group.addButton(self.atag_radio_button, 1)
         self.atag_radio_button.setText('Blink')
+        self.atag_radio_button.pressed.connect(
+            lambda: self.set_auton_drop_mode(1)
+        )
 
         self.atag_drop_radio_button = QtWidgets.QRadioButton()
+        self.auton_radio_group.addButton(self.atag_drop_radio_button, 2)
         self.atag_drop_radio_button.setText('Drop')
+        self.atag_drop_radio_button.pressed.connect(
+            lambda: self.set_auton_drop_mode(2)
+        )
 
-        self.atag_cancel_button = QtWidgets.QPushButton(QtGui.QIcon.fromTheme('process-stop'))
+        self.atag_cancel_button = QtWidgets.QPushButton('X')
+        self.atag_cancel_button.setEnabled(False)
+        self.atag_cancel_button.clicked.connect(self.stop_auton_drop)
 
         radio_button_widget = QtWidgets.QWidget()
         radio_button_layout = QtWidgets.QGridLayout()
         radio_button_widget.setLayout(radio_button_layout)
 
         radio_button_layout.addWidget(self.atag_radio_button, 0, 0)
-        radio_button_layout.addWidget(self.atag_radio_button, 0, 1)
+        radio_button_layout.addWidget(self.atag_drop_radio_button, 0, 1)
         radio_button_layout.addWidget(self.atag_cancel_button, 0, 2)
 
         water_drop_layout.addRow('Autonomy: ', radio_button_widget)
@@ -273,24 +280,85 @@ class WaterDropPane(QtWidgets.QWidget):
         )
         water_drop_layout.addRow("Visible Tags:", self.tags_label)
 
+        self.open_log_button = QtWidgets.QPushButton("Open log")
+        self.open_log_button.clicked.connect(self.start_log_file)
+        water_drop_layout.addWidget(self.open_log_button)
+
+        self.close_log_button = QtWidgets.QPushButton("Close log")
+        self.close_log_button.clicked.connect(self.close_log_file)
+        self.close_log_button.setEnabled(False)
+        water_drop_layout.addWidget(self.close_log_button)
+
         layout.addWidget(water_drop_groupbox)
 
         self.auto_done.connect(self.stop_auton_drop)
 
-        self.bdu_full_trigger = None
-        self.bdu_trigger = None
-        self.bdu_reset = None
+        self.detections_subscriber: roslibpy.Topic | None = None
+        self.bdu_full_trigger: roslibpy.Service | None = None
+        self.bdu_trigger: roslibpy.Service | None = None
+        self.bdu_reset: roslibpy.Service | None = None
+        self.auton_drop_client: Action | None = None
 
         self.current_mode = 0
+
+        if not os.path.isdir('log'):
+            os.mkdir('log')
+
+        self.log_file: TextIO | None = None
+        self.log_start_time: float = 0
+
+        self.controller.touchpad.led_color = (255, 0, 0)
+        self.controller.mic_button.led_state = False
+        self.controller.mic_button.led_pulsating = True
+        self.controller.mic_button.led_brightness = BrightnessLevel.HIGH
+
+    def start_log_file(self) -> None:
+        self.open_log_button.setEnabled(False)
+        self.close_log_button.setEnabled(True)
+        if self.log_file is None:
+            self.log_file = open(f'log/{datetime.datetime.utcnow().isoformat()}.log', 'w')
+            self.log_start_time = time.time()
+            self.log_to_file(f'Started log at {int(self.log_start_time)}')
+            self.controller.mic_button.led_state = True
+
+    def log_to_file(self, text: str) -> None:
+        if self.log_file is not None:
+            self.log_file.write(f'{int(time.time() - self.log_start_time)}: {text}\n')
+            self.log_file.flush()
+
+    def close_log_file(self) -> None:
+        self.open_log_button.setEnabled(True)
+        self.close_log_button.setEnabled(False)
+        if self.log_file is not None:
+            self.log_to_file(f'Closed file at {int(time.time())} (Ran for {int(time.time() - self.log_start_time)}s)')
+            self.log_file.close()
+            Toast.get().show_message(f'Saved log to: {self.log_file.name}', 2)
+            self.log_file = None
+            self.controller.mic_button.led_state = False
+
+    def detections_callback(self, msg: dict[str, Any]) -> None:
+        detections = msg.get('detections', [])
+        tags = [detection.get('id', '?') for detection in detections]
+        self.tags_label.setText(self.format_visible_tags(tags))
+
+    def enable_drop(self) -> None:
+        self.atag_drop_radio_button.setChecked(True)
+        self.set_auton_drop_mode(2)
+
+    def enable_blink(self) -> None:
+        self.atag_radio_button.setChecked(True)
+        self.set_auton_drop_mode(1)
 
     def set_auton_drop_mode(self, mode: int) -> None:
         if self.atag_cancel_button is not None:
             self.atag_cancel_button.setEnabled(mode != 0)
 
         if mode != self.current_mode:
-            if mode > 0:
-                if self.auton_drop_client.running:
+            if mode != 0:
+                if self.current_mode != 0:
                     self.auton_drop_client.cancel()
+                self.controller.touchpad.led_color = (255, 150, 0) if mode == 2 else (0, 255, 0)
+                print(self.controller.touchpad.led_color)
                 self.auton_drop_client.send_goal({'should_drop': mode == 2})
             else:
                 self.auton_drop_client.cancel()
@@ -298,20 +366,27 @@ class WaterDropPane(QtWidgets.QWidget):
         self.current_mode = mode
 
     def auton_feedback_callback(self, msg: dict[str, Any]) -> None:
-        apriltag_id = msg.get('apriltag_id', None)
+        apriltag_id = msg.get('_apriltag_id', None)
 
         if self.current_mode == 1:
-            logger.info(f'Blinking for tag: {apriltag_id}')
+            msg = f'Blinking for tag: {apriltag_id}'
         else:
-            logger.info(f'Dropping for tag: {apriltag_id}')
+            msg = f'Dropping for tag: {apriltag_id}'
+
+        logger.info(msg)
+        self.log_to_file(msg)
 
     def auton_drop_finished(self, _: dict[str, Any]) -> None:
+        self.log_to_file(f'Finished auton drop')
         self.stop_auton_drop()
 
     def stop_auton_drop(self) -> None:
         self.set_auton_drop_mode(0)
+        self.auton_radio_group.setExclusive(False)
         self.atag_radio_button.setChecked(False)
-        self.atag_cancel_button.setChecked(False)
+        self.atag_drop_radio_button.setChecked(False)
+        self.auton_radio_group.setExclusive(True)
+        self.controller.touchpad.led_color = (255, 0, 0)
 
     def trigger_bdu_full(self) -> None:
         self.stop_auton_drop()
@@ -321,6 +396,7 @@ class WaterDropPane(QtWidgets.QWidget):
                 'Bdu trigger result: ' + msg.get('message', '')
             )
         )
+        self.log_to_file(f'Full manual drop triggered')
 
     def trigger_bdu(self) -> None:
         self.stop_auton_drop()
@@ -330,6 +406,7 @@ class WaterDropPane(QtWidgets.QWidget):
                 'Bdu trigger m result: ' + msg.get('message', '')
             )
         )
+        self.log_to_file(f'Stage manual drop triggered')
 
     def reset_bdu(self) -> None:
         self.stop_auton_drop()
@@ -339,8 +416,16 @@ class WaterDropPane(QtWidgets.QWidget):
                 'Bdu reset m result: ' + msg.get('message', '')
             )
         )
+        self.log_to_file(f'Reset BDU')
 
     def setup_ros(self, client: roslibpy.Ros) -> None:
+        self.detections_subscriber = roslibpy.Topic(
+            client,
+            '/detections',
+            'apriltag_msgs/msg/AprilTagDetectionArray'
+        )
+        self.detections_subscriber.subscribe(self.detections_callback)
+
         self.bdu_full_trigger = roslibpy.Service(
             client,
             '/bdu/full_trigger',
@@ -364,150 +449,15 @@ class WaterDropPane(QtWidgets.QWidget):
             self.auton_drop_finished
         )
 
-        def dummy(a=None, b=None):
-            pass
-
-        def auto_drop(msg):
-            self.tags_label.setText(self.format_visible_tags(str([d['id'] for d in msg['detections']])))
-            if len(msg['detections']) > 0:
-                if self.enabled_atag_drop:
-                    print(f"Dropping for tag: {msg['detections'][0]}")
-                    self.blink_t.call(
-                        roslibpy.ServiceRequest({'mode': 1, 'argument': 3, 'color': {'r': 252, 'g': 190, 'b': 3}}),
-                        callback=dummy
-                    )
-
-                    def do_drop():
-                        time.sleep(1)
-                        self.bdu_full_trigger.call(
-                            roslibpy.ServiceRequest(),
-                            callback=dummy
-                        )
-
-                    Thread(
-                        target=do_drop,
-                        daemon=True
-                    ).start()
-
-
-                elif self.enabled_atag:
-                    print(f"Blinking for tag: {msg['detections'][0]}")
-                    self.blink_t.call(
-                        roslibpy.ServiceRequest({'mode': 1, 'argument': 3, 'color': {'r': 252, 'g': 190, 'b': 3}}),
-                        callback=dummy
-                    )
-
-                self.enabled_atag_drop = False
-                self.enabled_atag = False
-
-                self.auto_done.emit()
-
-    def process_message(self, topic: str, payload: str) -> None:
-        if topic == "avr/autonomy/water_drop_state":
-            state_str = "inactive"
-            try:
-                payload = json.loads(payload)
-                state_str = payload.get("state", state_str)
-            except json.JSONDecodeError:
-                pass
-            state_str = state_str.strip().lower()
-            state = STATE_LOOKUP.get(state_str, 0)
-            self.auto_state_label.setText(
-                    self.format_auto_state(state)
-            )
-
-        elif topic == "avr/autonomy/water_drop_locked":
-            locked_tag = None
-            try:
-                payload = json.loads(payload)
-                locked_tag = payload.get("tag", locked_tag)
-            except json.JSONDecodeError:
-                pass
-            self.locked_tag_label.setText(
-                    self.format_locked_tag(locked_tag)
-            )
-        elif topic == "avr/autonomy/water_drop_countdown":
-            time_until_drop = None
-            try:
-                payload = json.loads(payload)
-                time_until_drop = payload.get("time", time_until_drop)
-            except json.JSONDecodeError:
-                pass
-            self.countdown_label.setText(
-                    self.format_countdown(time_until_drop)
-            )
-        elif topic == "avr/apriltags/visible":
-            tags = []
-            tag_ids = ""
-            try:
-                payload = json.loads(payload)
-                tags = payload.get("tags", [])
-            except json.JSONDecodeError:
-                pass
-            for tag in tags:
-                tag_id = tag.get("id", None)
-                if tag_id is not None:
-                    print(type(tag_id))
-                    print(tag_id)
-                    tag_ids += str(tag_id)
-                    tag_ids += ", "
-            if len(tags) > 0:
-                tag_ids = tag_ids[:-2]
-            self.tags_label.setText(
-                    f"{self.format_visible_tags(tag_ids)} (Updated at {self.get_formatted_time()})"
-            )
-
-    def update_dropping_tag(self, tag_id: int) -> None:
-        self.client.publish(
-            "avr/autonomy/set_drop_tag",
-            json.dumps(
-                {
-                    "id": tag_id
-                }
-            ),
-            qos=2
-        )
-
     @staticmethod
-    def format_auto_state(state: int) -> str:
-        color = RED_COLOR
-        text = "Inactive"
-        if state == 1:
-            color = LIGHT_BLUE_COLOR
-            text = "Searching"
-        elif state == 2:
-            color = GREEN_COLOR
-            text = "Locked"
-        return f"<span style='color:{color};'>{text}</span>"
-
-    @staticmethod
-    def format_locked_tag(tag_id: int | None) -> str:
-        if tag_id is None:
+    def format_visible_tags(tags: list[int]) -> str:
+        if len(tags) < 1:
             return COLORED_NONE_TEXT
-        else:
-            return f"<span style='color:{GREEN_COLOR};'>{tag_id}</span>"
-
-    @staticmethod
-    def format_countdown(countdown: int | None) -> str:
-        if countdown is None:
-            return COLORED_NONE_TEXT
-        if countdown < 1:
-            return f"<span style='color:{GREEN_COLOR};'>Dropping</span>"
-        else:
-            color = f"{RED_COLOR}" if countdown <= 1 else f"{GREEN_COLOR}"
-            return f"<span style='color:{color};'>{countdown} seconds</span>"
-
-    @staticmethod
-    def format_visible_tags(tag_ids: str) -> str:
-        if len(tag_ids) < 1:
-            return COLORED_NONE_TEXT
-        return f"<span style='color:{LIGHT_BLUE_COLOR};'>{tag_ids}</span>"
-
-    @staticmethod
-    def get_formatted_time() -> str:
-        t = datetime.datetime.now().strftime("%I:%M:%S")
-        # noinspection SpellCheckingInspection
-        return f"<span style='color:{TIME_COLOR};'>{t}</span>"
+        text = ''
+        for tag_id in tags:
+            text += f"{tag_id},"
+        text = text[:-1]
+        return f"<a style='color:{GREEN_COLOR};'>{text}</a>"
 
 
 class GimbalPane(QtWidgets.QWidget):
@@ -543,21 +493,6 @@ class GimbalPane(QtWidgets.QWidget):
 
         layout.addWidget(gimbal_groupbox)
 
-    def process_message(self, topic: str, payload: str) -> None:
-        if topic == "avr/gimbal/response_pos":
-            x = 0
-            y = 0
-            try:
-                payload = json.loads(payload)
-                x = utils.constrain(payload.get("x", 50), 0, 180)
-                y = utils.constrain(payload.get("y", 50), 0, 180)
-                x = utils.map(x, 0, 180, -50, 50)
-                y = utils.map(y, 0, 180, 50, -50)
-            except json.JSONDecodeError:
-                pass
-            self.yaw_dial.setValue(x)
-            self.pitch_bar.setValue(y)
-
 
 class TelemetryPane(QtWidgets.QWidget):
     update_battery = QtCore.Signal(float)
@@ -586,15 +521,15 @@ class TelemetryPane(QtWidgets.QWidget):
         layout.addWidget(telemetry_groupbox)
 
         self.update_battery.connect(
-                lambda voltage: self.battery_label.setText(
-                        f"<span style='color:{LIGHT_BLUE_COLOR if voltage > 14 else RED_COLOR};'>{voltage} Volts</span>"
-                )
+            lambda voltage: self.battery_label.setText(
+                f"<span style='color:{LIGHT_BLUE_COLOR if voltage > 14 else RED_COLOR};'>{voltage} Volts</span>"
+            )
         )
         self.update_armed.connect(
-                self.armed_label.setText
+            self.armed_label.setText
         )
         self.update_mode.connect(
-                lambda text: self.mode_label.setText(
-                        f"<span style='color:{GREEN_COLOR};'>{text}</span>"
-                )
+            lambda text: self.mode_label.setText(
+                f"<span style='color:{GREEN_COLOR};'>{text}</span>"
+            )
         )
