@@ -4,7 +4,6 @@ import json
 from typing import Callable
 
 import colour
-import roslibpy
 from PySide6 import QtCore, QtWidgets
 from bell.avr.mqtt.payloads import (
     AvrFcmAttitudeEulerPayload,
@@ -86,7 +85,7 @@ class VMCTelemetryWidget(BaseTabWidget):
         # top groupbox
         top_groupbox = QtWidgets.QGroupBox("FCC Status")
         top_groupbox.setSizePolicy(
-                QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed
+            QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed
         )
         top_layout = QtWidgets.QFormLayout()
         top_groupbox.setLayout(top_layout)
@@ -121,7 +120,7 @@ class VMCTelemetryWidget(BaseTabWidget):
         # bottom groupbox
         bottom_group = QtWidgets.QFrame()
         bottom_group.setSizePolicy(
-                QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed
+            QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed
         )
         bottom_layout = QtWidgets.QHBoxLayout()
         bottom_group.setLayout(bottom_layout)
@@ -144,7 +143,7 @@ class VMCTelemetryWidget(BaseTabWidget):
         loc_xyz_layout.addWidget(self.loc_z_line_edit)
 
         bottom_left_layout.addRow(
-                QtWidgets.QLabel("Local NED (x, y, z):"), loc_xyz_layout
+            QtWidgets.QLabel("Local NED (x, y, z):"), loc_xyz_layout
         )
 
         # lat, lon, alt row
@@ -160,7 +159,7 @@ class VMCTelemetryWidget(BaseTabWidget):
         loc_lla_layout.addWidget(self.loc_alt_line_edit)
 
         bottom_left_layout.addRow(
-                QtWidgets.QLabel("Global (lat, lon, alt):"), loc_lla_layout
+            QtWidgets.QLabel("Global (lat, lon, alt):"), loc_lla_layout
         )
 
         bottom_layout.addWidget(bottom_left_groupbox)
@@ -241,7 +240,7 @@ class VMCTelemetryWidget(BaseTabWidget):
 
         states_groupbox = QtWidgets.QGroupBox("States")
         states_groupbox.setSizePolicy(
-                QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed
+            QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed
         )
         states_layout = QtWidgets.QGridLayout()
         states_groupbox.setLayout(states_layout)
@@ -293,23 +292,21 @@ class VMCTelemetryWidget(BaseTabWidget):
 
         self.main_shutdown_button = QtWidgets.QPushButton("Shutdown")
         self.main_shutdown_button.clicked.connect(
-                lambda: self.restart_service(
-                        None,
-                        True,
-                        """This will shutdown the vehicle management computer.
+            lambda: self.restart_service(
+                None,
+                True,
+                """This will shutdown the vehicle management computer.
                         This means that you have to unplug it and re plug it to restart it again.""",
-                        lambda: self.send_message("avr/shutdown", "", qos=2)
-                )
+                lambda: self.send_message("avr/shutdown", "", qos=2)
+            )
         )
 
         layout.addWidget(self.main_shutdown_button)
 
-    def toggle_arm(self) -> None:
-        self.send_message("avr/arm", {"arm": not self.armed})
-
     def set_controller_led(self, rgb: tuple[int, int, int]):
         if self.controller is not None:
-            self.controller.touchpad.led_color = rgb
+            # self.controller.touchpad.led_color = rgb
+            pass
 
     def update_controller_led(self) -> None:
         checked_states = [
@@ -408,7 +405,7 @@ class VMCTelemetryWidget(BaseTabWidget):
         Update satellites information
         """
         self.satellites_label.setText(
-                f"{payload['num_satellites']} visible, {payload['fix_type']}"
+            f"{payload['num_satellites']} visible, {payload['fix_type']}"
         )
 
     def update_battery(self, payload: AvrFcmBatteryPayload) -> None:
@@ -434,7 +431,7 @@ class VMCTelemetryWidget(BaseTabWidget):
 
         # this is required to change the progress bar color as the value changes
         color = smear_color(
-                (135, 0, 16), (11, 135, 0), value=soc, min_value=0, max_value=100
+            (135, 0, 16), (11, 135, 0), value=soc, min_value=0, max_value=100
         )
 
         stylesheet = f"""
