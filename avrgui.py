@@ -8,6 +8,7 @@ from loguru import logger
 from playsound import playsound
 
 from avrgui.lib.controller.controller import Controller
+from avrgui.lib.controller.pythondualsense import TriggerMode
 from avrgui.lib.enums import ConnectionState
 from avrgui.lib.qt_icon import set_icon
 from avrgui.lib.toast import Toast
@@ -279,12 +280,8 @@ class MainWindow(QtWidgets.QWidget):
         self.water_drop_widget.build()
         self.water_drop_widget.pop_in.connect(self.tabs.pop_in)
         self.tabs.addTab(
-                self.water_drop_widget,
-                self.water_drop_widget.windowTitle(),
-        )
-
-        self.controller_lt.connect(
-                self.water_drop_widget.trigger_bpu
+            self.water_drop_widget,
+            self.water_drop_widget.windowTitle(),
         )
         # self.controller_touchBtn.connect(
         #         lambda: self.main_connection_widget.ros_client_connection_widget.ros_client.client.publish(
@@ -321,33 +318,53 @@ class MainWindow(QtWidgets.QWidget):
         self.heads_up_widget.build()
         self.heads_up_widget.pop_in.connect(self.tabs.pop_in)
         self.tabs.addTab(
-                self.heads_up_widget,
-                self.heads_up_widget.windowTitle(),
+            self.heads_up_widget,
+            self.heads_up_widget.windowTitle(),
         )
         self.heads_up_widget.zed_pane.toggle_connection.connect(
-                lambda: self.camera_view_widget.change_streaming.emit(
-                        not self.camera_view_widget.is_connected
-                )
+            lambda: self.camera_view_widget.change_streaming.emit(
+                not self.camera_view_widget.is_connected
+            )
         )
+
+        self.controller_triangle.connect(lambda v: self.heads_up_widget.water_pane.en_atag_drop() if v else None)
+        self.controller_circle.connect(lambda v: self.heads_up_widget.water_pane.en_atag() if v else None)
         # self.camera_view_widget.update_frame.connect(
         #         self.heads_up_widget.zed_pane.update_frame.emit
         # )
         self.thermal_view_control_widget.viewer.update_frame.connect(
-                self.heads_up_widget.thermal_pane.update_frame.emit
+            self.heads_up_widget.thermal_pane.update_frame.emit
         )
         self.vmc_telemetry_widget.voltage_update.connect(
-                self.heads_up_widget.telemetry_pane.update_battery.emit
+            self.heads_up_widget.telemetry_pane.update_battery.emit
         )
         self.vmc_telemetry_widget.armed_update.connect(
-                self.heads_up_widget.telemetry_pane.update_armed.emit
+            self.heads_up_widget.telemetry_pane.update_armed.emit
         )
         self.vmc_telemetry_widget.mode_update.connect(
-                self.heads_up_widget.telemetry_pane.update_mode.emit
+            self.heads_up_widget.telemetry_pane.update_mode.emit
+        )
+        self.controller_lt.connect(
+            self.heads_up_widget.water_pane.trigger_bdu
+        )
+        self.controller_lb.connect(
+            self.heads_up_widget.water_pane.trigger_bdu_full
+        )
+        self.controller_cross.connect(
+            self.heads_up_widget.water_pane.reset_bdu
         )
 
         # set initial state
         self.set_mqtt_connected_state(ConnectionState.disconnected)
         self.set_serial_connected_state(ConnectionState.disconnected)
+
+        controller.right_trigger.trigger_mode = TriggerMode.SECTION
+        controller.right_trigger.trigger_section = (75, 120)
+        controller.right_trigger.trigger_force = 255
+
+        controller.left_trigger.trigger_mode = TriggerMode.SECTION
+        controller.left_trigger.trigger_section = (75, 120)
+        controller.left_trigger.trigger_force = 255
 
     def set_mqtt_connected_state(self, connection_state: ConnectionState) -> None:
         self.mqtt_connected = connection_state == ConnectionState.connected
@@ -470,12 +487,12 @@ def main() -> None:
     socketio_action.triggered.connect(w.main_connection_widget.ros_client_connection_widget.ros_client.logout)
     socketio_action.setEnabled(False)
     w.main_connection_widget.ros_client_connection_widget.connection_state.connect(
-            lambda state: socketio_action.setEnabled(state == ConnectionState.connected)
+        lambda state: socketio_action.setEnabled(state == ConnectionState.connected)
     )
     w.main_connection_widget.ros_client_connection_widget.connection_state.connect(
-            lambda state: socketio_action.setText(
-                    "Disconnect SocketIO" if state == ConnectionState.connected else "SocketIO Disconnected"
-            )
+        lambda state: socketio_action.setText(
+            "Disconnect SocketIO" if state == ConnectionState.connected else "SocketIO Disconnected"
+        )
     )
     d.addAction(socketio_action)
 
