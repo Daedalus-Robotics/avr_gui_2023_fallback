@@ -1,10 +1,11 @@
-import time
+import asyncio
 from threading import Thread
 
 import hid
 
 from .components.button import Button
 from .components.dpad import Dpad
+from .components.gyroscope import Gyroscope
 from .components.mic_button import MicButton
 from .components.microphone import Microphone
 from .components.player_led import PlayerLed
@@ -15,60 +16,78 @@ from .components.touchpad import Touchpad
 from .components.trigger import Trigger
 from .const import BLUETOOTH_REPORT_LENGTH, BatteryState, FeatureReport, USB_REPORT_LENGTH, UpdateFlags1
 from .lib.callback import Callback
-from .lib.controller_hid import find_devices, get_checksum, get_device
+from .lib.hid_helpers import add_checksum, find_devices, get_device
 from .lib.utils import ensure_list_length
 
 
 class Dualsense:
-    def __init__(self, serial_number: str = None, path: str = None) -> None:
+    def __init__(self,
+                 serial_number: str = None,
+                 path: str = None,
+                 event_loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
+                 ) -> None:
         """
         Create a new Dualsense object. This will control a dualsense or PS5 controller.
         If you have multiple controllers, you may need to specify a serial_number or path.
 
         :param serial_number: The serial of the controller (only needed for multiple controllers)
         :param path: The path to the controller device (only needed for multiple controllers)
+        :param event_loop: The event loop to run asynchronous callbacks in
         """
         self.serial_number = serial_number
         self.path = path
+        self._event_loop = event_loop
 
         self._use_bluetooth = False
         self._report_length = USB_REPORT_LENGTH
 
-        self.circle = Button()
-        self.cross = Button()
-        self.square = Button()
-        self.triangle = Button()
-        self.dpad = Dpad()
-        self.share = Button()
-        self.options = Button()
-        self.ps = Button()
+        self.circle = Button(event_loop)
+        self.cross = Button(event_loop)
+        self.square = Button(event_loop)
+        self.triangle = Button(event_loop)
+
+        self.dpad = Dpad(event_loop)
+
+        self.share = Button(event_loop)
+        self.options = Button(event_loop)
+        self.ps = Button(event_loop)
+
         self.mic_button = MicButton()
-        self.left_bumper = Button()
-        self.right_bumper = Button()
-        self.left_trigger = Trigger(UpdateFlags1.LEFT_TRIGGER)
-        self.right_trigger = Trigger(UpdateFlags1.RIGHT_TRIGGER)
-        self.left_stick = Thumbstick()
-        self.right_stick = Thumbstick()
-        self.touchpad = Touchpad()
+
+        self.left_bumper = Button(event_loop)
+        self.right_bumper = Button(event_loop)
+
+        self.left_trigger = Trigger(UpdateFlags1.LEFT_TRIGGER, event_loop)
+        self.right_trigger = Trigger(UpdateFlags1.RIGHT_TRIGGER, event_loop)
+
+        self.left_stick = Thumbstick(event_loop)
+        self.right_stick = Thumbstick(event_loop)
+
+        self.touchpad = Touchpad(event_loop)
+
         self.player_led = PlayerLed()
+
         self.left_rumble = RumbleMotor()
         self.right_rumble = RumbleMotor()
+
         self.speaker = Speaker()
         self.microphone = Microphone()
 
-        self.on_update = Callback()
+        self.gyroscope = Gyroscope()
+
+        self.on_update = Callback(event_loop)
         """
         Called every time the states are updated
         """
-        self.on_state = Callback()
+        self.on_state = Callback[bool](event_loop)
         """
         Called on connect and on disconnect
         """
-        self.on_battery_percent = Callback[int]()
+        self.on_battery_percent = Callback[int](event_loop)
         """
         Called every time the battery percent changes with the current percentage as a parameter
         """
-        self.on_battery_state = Callback[BatteryState]()
+        self.on_battery_state = Callback[BatteryState](event_loop)
         """
         Called every time the battery starts or stops charging with the current battery state as a parameter
         """
@@ -131,7 +150,7 @@ class Dualsense:
         Get the mac address of the controller.
         I actually have no clue if this works correctly
 
-        :return: The mac address. None if the controller has not connected.
+        :return: The mac-address. None if the controller has not connected.
         """
         # ToDo: Test this
         if self._device_mac_address is None:
@@ -216,8 +235,8 @@ class Dualsense:
         """
         # ToDo: Make this easier to use
         calibration_feature_report = self._device.get_feature_report(
-                FeatureReport.CALIBRATION.id,
-                FeatureReport.CALIBRATION.length
+            FeatureReport.CALIBRATION.id,
+            FeatureReport.CALIBRATION.length
         )
         return calibration_feature_report
 
@@ -243,29 +262,30 @@ class Dualsense:
                     self._device.close()
                 if device is None:
                     device = get_device(
-                            serial_number = self.serial_number,
-                            path = self.path
+                        serial_number=self.serial_number,
+                        path=self.path
                     )
 
                 if not force_bluetooth:
                     serial_number = None
                     try:
                         serial_number = device.get_serial_number_string()
+                        print(serial_number)
                     except OSError:
                         pass
                     if serial_number not in (None, ""):
-                        device_dict = find_devices(serial_number = serial_number, path = self.path)
+                        device_dict = find_devices(serial_number=serial_number, path=self.path)
                         interface = device_dict["interface_number"]
                         if interface == -1:
                             use_bt = True
 
                 pairing_feature_report = device.get_feature_report(
-                        FeatureReport.PAIRING.id,
-                        FeatureReport.PAIRING.length
+                    FeatureReport.PAIRING.id,
+                    FeatureReport.PAIRING.length
                 )
                 firmware_feature_request = device.get_feature_report(
-                        FeatureReport.FIRMWARE.id,
-                        FeatureReport.FIRMWARE.length
+                    FeatureReport.FIRMWARE.id,
+                    FeatureReport.FIRMWARE.length
                 )
 
                 self._device_mac_address = pairing_feature_report[1:7]
@@ -281,7 +301,8 @@ class Dualsense:
                     raise e
             self._device = device
             self._update_thread_running = True
-            self._update_thread = Thread(target = self._update, daemon = True)
+            # ToDo: Fix
+            self._update_thread = Thread(target=self._update, daemon=True)
             self._update_thread.start()
             self._loop_running = False
             if hold:
@@ -318,9 +339,11 @@ class Dualsense:
         This is not meant to be called in the main thread.
         """
         try:
+            l = 0
             while self._update_thread_running:
                 input_report = list(self._device.read(self._report_length, 1000))
                 if len(input_report) == self._report_length:
+                    self.r = input_report
                     self._update_inputs(input_report)
                 else:
                     print("Got incorrect size of report: " + str(len(input_report)))
@@ -337,8 +360,8 @@ class Dualsense:
                 self._loop_running = True
 
                 self.on_update()
-        except OSError:
-            pass
+        except OSError as e:
+            print(e)
         finally:
             self._device.close()
             if not self._last_state:
@@ -356,50 +379,49 @@ class Dualsense:
         if self._use_bluetooth:
             input_report.pop(1)
 
-        buttons = input_report[8]
+        symbol_buttons = input_report[8]
+        self.square.update(symbol_buttons & 0x10 != 0)
+        self.cross.update(symbol_buttons & 0x20 != 0)
+        self.circle.update(symbol_buttons & 0x40 != 0)
+        self.triangle.update(symbol_buttons & 0x80 != 0)
 
-        self.circle.pressed = buttons & 0x40 != 0
-        self.cross.pressed = buttons & 0x20 != 0
-        self.square.pressed = buttons & 0x10 != 0
-        self.triangle.pressed = buttons & 0x80 != 0
-
-        self.dpad.raw = buttons & 0x0f
+        self.dpad.update(symbol_buttons & 0x0f)
 
         top_buttons = input_report[9]
         ps_mic_touch_buttons = input_report[10]
 
-        self.share.pressed = top_buttons & 0x10 != 0
-        self.options.pressed = top_buttons & 0x20 != 0
-        self.ps.pressed = ps_mic_touch_buttons & 0x01 != 0
-        self.mic_button.pressed = ps_mic_touch_buttons & 0x04 != 0
+        self.share.update(top_buttons & 0x10 != 0)
+        self.options.update(top_buttons & 0x20 != 0)
+        self.ps.update(ps_mic_touch_buttons & 0x01 != 0)
+        self.mic_button.update(ps_mic_touch_buttons & 0x04 != 0)
 
-        self.left_bumper.pressed = top_buttons & 0x01 != 0
-        self.right_bumper.pressed = top_buttons & 0x02 != 0
-        self.left_trigger.pos = input_report[5]
-        self.right_trigger.pos = input_report[6]
+        self.left_bumper.update(top_buttons & 0x01 != 0)
+        self.right_bumper.update(top_buttons & 0x02 != 0)
 
-        self.left_stick.pressed = top_buttons & 0x40 != 0
-        self.right_stick.pressed = top_buttons & 0x80 != 0
-        self.left_stick.pos = (input_report[1] - 127, input_report[2] - 127)
-        self.right_stick.pos = (input_report[3] - 127, input_report[4] - 127)
+        self.left_trigger.update(input_report[5])
+        self.right_trigger.update(input_report[6])
 
-        self.touchpad.pressed = ps_mic_touch_buttons & 0x02 != 0
+        self.left_stick.update(top_buttons & 0x40 != 0, (input_report[1] - 127, input_report[2] - 127))
+        self.right_stick.update(top_buttons & 0x80 != 0, (input_report[3] - 127, input_report[4] - 127))
 
-        self.touchpad.touch_point_1.id = input_report[33] & 0x7F
-        self.touchpad.touch_point_1.is_selected = (input_report[33] & 0x80) == 0
-        x = ((input_report[35] & 0x0f) << 8) | (input_report[34])
-        y = ((input_report[36]) << 4) | ((input_report[35] & 0xf0) >> 4)
-        self.touchpad.touch_point_1.pos = x, y
+        touch_point_1_x = ((input_report[35] & 0x0f) << 8) | (input_report[34])
+        touch_point_1_y = ((input_report[36]) << 4) | ((input_report[35] & 0xf0) >> 4)
+        touch_point_1_report = (input_report[33] & 0x7F, input_report[33] & 0x80 == 0, touch_point_1_x, touch_point_1_y)
 
-        self.touchpad.touch_point_2.id = input_report[37] & 0x7F
-        self.touchpad.touch_point_2.is_selected = (input_report[37] & 0x80) == 0
-        x = ((input_report[39] & 0x0f) << 8) | (input_report[38])
-        y = ((input_report[40]) << 4) | ((input_report[39] & 0xf0) >> 4)
-        self.touchpad.touch_point_2.pos = x, y
+        touch_point_2_x = ((input_report[39] & 0x0f) << 8) | (input_report[38])
+        touch_point_2_y = ((input_report[40]) << 4) | ((input_report[39] & 0xf0) >> 4)
+        touch_point_2_report = (input_report[37] & 0x7F, input_report[37] & 0x80 == 0, touch_point_2_x, touch_point_2_y)
 
-        # self.state.gyro.Pitch = int.from_bytes(([inReport[22], inReport[23]]), byteorder = 'little', signed = True)
-        # self.state.gyro.Yaw = int.from_bytes(([inReport[24], inReport[25]]), byteorder = 'little', signed = True)
-        # self.state.gyro.Roll = int.from_bytes(([inReport[26], inReport[27]]), byteorder = 'little', signed = True)
+        self.touchpad.update(
+            ps_mic_touch_buttons & 0x02 != 0,
+            touch_point_1_report,
+            touch_point_2_report
+        )
+
+        roll = int.from_bytes(([input_report[22], input_report[23]]), byteorder='little', signed=True)
+        pitch = int.from_bytes(([input_report[24], input_report[25]]), byteorder='little', signed=True)
+        yaw = int.from_bytes(([input_report[26], input_report[27]]), byteorder='little', signed=True)
+        self.gyroscope.update((roll, pitch, yaw))
 
         status = input_report[53]
         battery_percent = min(((status & 0x0f) * 10) + 5, 100)
@@ -436,15 +458,19 @@ class Dualsense:
 
         left_trigger_flag, left_trigger_report = self.left_trigger.get_report()
         report[1] |= left_trigger_flag
-        report[22:26] = ensure_list_length(left_trigger_report, 4, 0)
+        report[22:26] = left_trigger_report
 
         # For testing
         # report[1] = 0xff
-        # report[22] = self.val22
-        # report[23] = self.val23
-        # report[24] = self.val24
-        # report[25] = self.val25
-        # I have no idea what these values do but the triggers vibrate when I set some of them them
+        # report[22] = 0x26
+        # report[23] = 0x0
+        # report[24] = 0x02 if True else 0x00
+        # report[25] = 0x5
+        # report[26] = 0xff - 0x5
+        # report[27] = 0xff
+        # report[28] = 0x8
+
+        # I have no idea what these values do but the triggers vibrate when I set some of them
         # report[26] = self.val26  # ?
         # report[27] = self.val27  # this seems to be the start of the vibration zone, but it only works sometimes
         # report[28] = self.val28  # this might be something else about the vibration zone, but it's not the end
@@ -453,7 +479,7 @@ class Dualsense:
 
         right_trigger_flag, right_trigger_report = self.right_trigger.get_report()
         report[1] |= right_trigger_flag
-        report[11:15] = ensure_list_length(right_trigger_report, 4, 0)
+        report[11:15] = right_trigger_report
 
         # I have no idea what these values do
         # report[15]
@@ -500,7 +526,7 @@ class Dualsense:
         if self._use_bluetooth:
             report.insert(1, 0x00)
             report.insert(2, 0x10)
-            report = get_checksum(report)
+            add_checksum(report)
 
         # report[1] |= self.add_flag1
         # report[2] |= self.add_flag2

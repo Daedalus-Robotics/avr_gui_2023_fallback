@@ -1,3 +1,4 @@
+import asyncio
 from enum import IntFlag, auto
 
 from .button import Button
@@ -86,19 +87,22 @@ class DpadDirection(IntFlag):
 
 
 class Dpad:
-    def __init__(self) -> None:
-        self.on_direction = Callback[DpadDirection]()
+    def __init__(self, event_loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()) -> None:
+        self.on_direction = Callback[DpadDirection](event_loop)
         """
         This is called every time any button on the dpad changes. This will be passed a DpadDirection. 
         """
 
-        self.up = Button()
-        self.down = Button()
-        self.left = Button()
-        self.right = Button()
+        self.up = Button(event_loop)
+        self.down = Button(event_loop)
+        self.left = Button(event_loop)
+        self.right = Button(event_loop)
 
         self._dpad_raw = 0
         self._dpad_direction = DpadDirection.NONE
+
+    def __int__(self) -> int:
+        return self._dpad_raw
 
     @property
     def raw(self) -> int:
@@ -109,11 +113,19 @@ class Dpad:
         """
         return self._dpad_raw
 
-    @raw.setter
-    def raw(self, value: int) -> None:
+    @property
+    def direction(self) -> DpadDirection:
+        """
+        Get the current dpad direction
+
+        :return: The dpad direction
+        """
+        return self._dpad_direction
+
+    def update(self, value: int) -> None:
         """
         Update the current raw dpad value.
-        This is not meant to be used outside this library.
+        This is an internal method!
 
         :param value: The new raw dpad value
         """
@@ -123,16 +135,7 @@ class Dpad:
 
             self.on_direction(self._dpad_direction)
 
-            self.up.pressed = self._dpad_direction.up
-            self.down.pressed = self._dpad_direction.down
-            self.left.pressed = self._dpad_direction.left
-            self.right.pressed = self._dpad_direction.right
-
-    @property
-    def direction(self) -> DpadDirection:
-        """
-        Get the current dpad direction
-
-        :return: The dpad direction
-        """
-        return self._dpad_direction
+            self.up.update(self._dpad_direction.up)
+            self.down.update(self._dpad_direction.down)
+            self.left.update(self._dpad_direction.left)
+            self.right.update(self._dpad_direction.right)

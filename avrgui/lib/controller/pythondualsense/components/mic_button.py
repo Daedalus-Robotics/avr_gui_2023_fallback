@@ -1,10 +1,12 @@
+import asyncio
+
 from .button import Button
 from ..const import LedFlags, UpdateFlags2, BrightnessLevel
 
 
 class MicButton(Button):
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, event_loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()) -> None:
+        super().__init__(event_loop)
 
         self._led_state = False
         self._led_pulsating = False

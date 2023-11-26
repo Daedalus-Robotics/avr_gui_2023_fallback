@@ -1,9 +1,11 @@
+import asyncio
+
 from ..lib.callback import Callback
 
 
 class Button:
-    def __init__(self) -> None:
-        self.on_press = Callback()
+    def __init__(self, event_loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()) -> None:
+        self.on_press = Callback(event_loop)
         """
         This will be called once when the button is pressed
         """
@@ -15,6 +17,12 @@ class Button:
 
         self._pressed = False
 
+    def __bool__(self) -> bool:
+        return self._pressed
+
+    def __repr__(self) -> str:
+        return f"Button: {self._pressed}"
+
     @property
     def pressed(self) -> bool:
         """
@@ -24,16 +32,15 @@ class Button:
         """
         return self._pressed
 
-    @pressed.setter
-    def pressed(self, state: bool) -> None:
+    def update(self, state: bool) -> None:
         """
-        Update the pressed state of the button.
-        This is not meant to be used by anything outside this library!
+        Update the state of the button using the state from the controller.
+        This is an internal method!
 
-        :param state: The new state of the button
+        :param state: The state of the button.
         """
         if state is not self._pressed:
             self._pressed = state
-            if self._pressed:
+            if state:
                 self.on_press()
-            self.on_state(self._pressed)
+            self.on_state(state)

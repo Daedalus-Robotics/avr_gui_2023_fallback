@@ -1,3 +1,4 @@
+import asyncio
 from enum import IntEnum
 
 from .button import Button
@@ -18,14 +19,14 @@ class TriggerMode(IntEnum):
 
 
 class Trigger(Button):
-    def __init__(self, changed_flag: int) -> None:
+    def __init__(self, changed_flag: int, event_loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()) -> None:
         """
         Create a new trigger object
 
         :param changed_flag: This is the flag that determines when the trigger has changed.
         This is required because the flags are different for right and left triggers
         """
-        super().__init__()
+        super().__init__(event_loop)
 
         self._changed_flag = changed_flag
 
@@ -34,7 +35,7 @@ class Trigger(Button):
         This is the threshold when the on_pressed callback will be called (0-255)
         """
 
-        self.on_pos = Callback[int]()
+        self.on_pos = Callback[int](event_loop)
         """
         This will be called every time the trigger moves.
         It will be passed the current position of the trigger (0-255).
@@ -46,6 +47,12 @@ class Trigger(Button):
         self._trigger_force = 0
         self._trigger_section = (0, 0)
 
+    def __int__(self) -> int:
+        return self._pos
+
+    def __repr__(self) -> str:
+        return f"Trigger: {self.pos}"
+
     @property
     def pos(self) -> int:
         """
@@ -54,23 +61,6 @@ class Trigger(Button):
         :return: The position of the trigger (0-255)
         """
         return self._pos
-
-    @pos.setter
-    def pos(self, value: int) -> None:
-        """
-        Update the position of the trigger.
-        This is not meant to be used outside this library.
-
-        :param value: The new position of the trigger (0-255)
-        """
-        if value != self._pos:
-            self.on_pos(value)
-
-            # Update pressed based on whether the trigger is passed the threshold
-            if value > self.threshold > self._pos or value < self.threshold < self._pos:
-                self.pressed = True if value > self.threshold > self._pos else False
-
-            self._pos = value
 
     @property
     def trigger_mode(self) -> TriggerMode:
@@ -134,6 +124,21 @@ class Trigger(Button):
             self._trigger_changed = True
             self._trigger_section = section
 
+    def update(self, pos: int) -> None:
+        """
+        Update the position of the trigger.
+        This is an internal method!
+
+        :param pos: The new position of the trigger (0-255)
+        """
+        if pos != self._pos:
+            self.on_pos(pos)
+
+            # Update pressed based on whether the trigger is past the threshold
+            super().update(pos > self.threshold)
+
+            self._pos = pos
+
     def force_update(self) -> None:
         """
         Send the next report as if the trigger state was changed
@@ -146,7 +151,7 @@ class Trigger(Button):
         Do not call this unless you plan on sending it manually.
         This will set _trigger_changed to False and not change the trigger.
 
-        :return: A tuple containing a flag to tell what was changed and the report. self._trigger_mode != TriggerMode.NO_RESISTANCE
+        :return: A tuple containing a flag to tell what was changed and the report.
         """
         flag = self._changed_flag if self._trigger_changed else UpdateFlags1.NONE
 

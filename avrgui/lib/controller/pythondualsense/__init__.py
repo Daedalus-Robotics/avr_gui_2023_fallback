@@ -1,6 +1,16 @@
-from .components.dpad import DpadDirection
-from .components.player_led import PlayerLedArrangement
-from .components.trigger import TriggerMode
+from .components import (
+    Button,
+    Dpad, DpadDirection,
+    MicButton,
+    Microphone,
+    PlayerLed, PlayerLedArrangement,
+    RumbleMotor,
+    Speaker,
+    Thumbstick,
+    Touchpad, TouchPoint,
+    Trigger, TriggerMode
+)
+
 from .const import BrightnessLevel
 from .dualsense import Dualsense
-from .lib.controller_hid import find_devices
+from .lib.hid_helpers import find_devices

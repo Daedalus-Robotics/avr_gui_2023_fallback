@@ -30,3 +30,12 @@ class Gyroscope:
         :return: The yaw
         """
         return self._yaw
+
+    def update(self, rpy) -> None:
+        """
+        Sets the rpy values.
+        This is not meant to be use outside this library.
+
+        :param rpy: A tuple of the rpy values.
+        """
+        self._roll, self._pitch, self._yaw = rpy

@@ -1,8 +1,9 @@
-from enum import Enum, IntEnum, IntFlag
+from enum import Enum, IntEnum, IntFlag, auto
 
 VENDOR_ID = 0x054c
 PRODUCT_ID = 0x0CE6
 CRC32_SEED = 0xA2
+CRC32_BYTE_ORDER = "little"
 
 USB_REPORT_LENGTH = 64
 BLUETOOTH_REPORT_LENGTH = 78
@@ -25,8 +26,8 @@ class FeatureReport(Enum):
 class UpdateFlags1(IntFlag):
     NONE = 0x00
     RUMBLE = 0x01 | 0x02  # For some reason both of these values are required for rumble
-    LEFT_TRIGGER = 0x08
     RIGHT_TRIGGER = 0x04
+    LEFT_TRIGGER = 0x08
     HEADSET_VOLUME = 0x10
     INTERNAL_SPEAKER_VOLUME = 0x20
     MICROPHONE_VOLUME = 0x40
@@ -38,18 +39,14 @@ class UpdateFlags2(IntFlag):
     MICROPHONE_LED = 0x01
     AUDIO_MIC_MUTE = 0x02
     TOUCHPAD_LED = 0x04
-    TURN_ALL_LEDS_OFF = 0x08  # I don't use this because it would mess up all the stored values for the leds
+    TURN_ALL_LEDS_OFF = 0x08  # Don't use this because it messes up all the stored values for the leds
     PLAYER_LEDS = 0x10
-    _ = 0x20  # I haven't needed this. I have no idea what its for
     MOTOR_POWER = 0x40
-    __ = 0x80  # I haven't needed this. I have no idea what its for
 
 
 class AudioEnableFlags(IntFlag):
     NONE = 0x00
     MICROPHONE = 0x01  # This flag is used for both the internal mic and mics on connected headphones
-    _ = 0x04  # I haven't needed this. I have no idea what its for
-    __ = 0x08  # I haven't needed this. I have no idea what its for
     DISABLE_HEADPHONES = 0x10
     INTERNAL_SPEAKER = 0x20
 
@@ -79,24 +76,38 @@ class BrightnessLevel(IntEnum):
     LOW = 0x2
 
 
-class BatteryState(IntEnum):
-    DISCHARGING = 0x0
-    FULL = 0x1
-    CHARGING = 0x2
-    INCORRECT_VOLTAGE = 0xa
-    TEMPERATURE_ERROR = 0xf
-    ERROR = 0xf
-    UNKNOWN = 0xff
+class BatteryState(Enum):
+    DISCHARGING = "discharging"
+    FULL = "full"
+    CHARGING = "charging"
+    INCORRECT_VOLTAGE = "bad voltage"
+    TEMPERATURE_ERROR = "temp error"
+    ERROR = "error"
+    UNKNOWN = "?"
+
+    # DISCHARGING = auto()
+    # FULL = auto()
+    # CHARGING = auto()
+    # INCORRECT_VOLTAGE = auto()
+    # TEMPERATURE_ERROR = auto()
+    # ERROR = auto()
+    # UNKNOWN = auto()
 
     @classmethod
     def find(cls, num: int):
         """
         Get the battery state from a number returned by the controller
         :param num: The number of the state
-        :return: The state
+        :return: The battery state
         """
-        for state in cls:
-            if state == num:
-                return state
-        return cls.UNKNOWN
+        try:
+            return _BATTERY_STATES[num]
+        except IndexError:
+            return cls.UNKNOWN
 
+
+_BATTERY_STATES = [BatteryState.UNKNOWN] * 16
+_BATTERY_STATES[0:3] = [BatteryState.DISCHARGING, BatteryState.FULL, BatteryState.CHARGING]
+_BATTERY_STATES[0xa] = BatteryState.INCORRECT_VOLTAGE
+_BATTERY_STATES[0xb] = BatteryState.TEMPERATURE_ERROR
+_BATTERY_STATES[0xf] = BatteryState.ERROR

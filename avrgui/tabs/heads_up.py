@@ -1,14 +1,22 @@
 import datetime
 import json
 import time
+from threading import Thread
+from typing import Any
 
+import colour
 import numpy as np
+import roslibpy
+import roslibpy.actionlib
 from PySide6 import QtCore, QtGui, QtWidgets
+from loguru import logger
 
 from ..lib import utils
+from ..lib.action import Action
 from ..lib.graphics_label import GraphicsLabel
 from .base import BaseTabWidget
 from .connection.rosbridge import RosBridgeClient
+from ..lib.utils import constrain
 
 RED_COLOR = "red"
 LIGHT_BLUE_COLOR = "#0091ff"
@@ -45,7 +53,7 @@ class HeadsUpDisplayWidget(BaseTabWidget):
         camera_groupbox.setFixedWidth(500)
 
         self.zed_pane = ZEDCameraPane(self)
-        camera_layout.addWidget(self.zed_pane)
+        # camera_layout.addWidget(self.zed_pane)
         self.thermal_pane = ThermalCameraPane(self)
         camera_layout.addWidget(self.thermal_pane)
 
@@ -73,6 +81,11 @@ class HeadsUpDisplayWidget(BaseTabWidget):
 
     def clear(self) -> None:
         pass
+
+    def setup_ros(self, client: roslibpy.Ros) -> None:
+        super().setup_ros(client)
+
+        self.water_pane.setup_ros(client)
 
 
 class ZEDCameraPane(QtWidgets.QWidget):
@@ -113,6 +126,42 @@ class ThermalCameraPane(QtWidgets.QWidget):
 
     def __init__(self, parent: QtWidgets.QWidget) -> None:
         super().__init__(parent)
+
+        # canvas size
+        self.width_ = 300
+        self.height_ = self.width_
+
+        # pixels within canvas
+        self.pixels_x = 32
+        self.pixels_y = self.pixels_x
+
+        self.pixel_width = self.width_ / self.pixels_x
+        self.pixel_height = self.height_ / self.pixels_y
+
+        # low range of the sensor (this will be blue on the screen)
+        self.MINTEMP = 20.0
+
+        # high range of the sensor (this will be red on the screen)
+        self.MAXTEMP = 32.0
+
+        # last lowest temp from camera
+        self.last_lowest_temp = 999.0
+
+        # how many color values we can have
+        self.COLORDEPTH = 1024
+
+        # how many pixels the camera is
+        self.camera_x = 8
+        self.camera_y = self.camera_x
+        self.camera_total = self.camera_x * self.camera_y
+
+        self.colors = [
+            (int(c.red * 255), int(c.green * 255), int(c.blue * 255))
+            for c in list(
+                colour.Color("indigo").range_to(colour.Color("red"), self.COLORDEPTH)
+            )
+        ]
+
         self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
 
         layout = QtWidgets.QVBoxLayout()
@@ -124,25 +173,54 @@ class ThermalCameraPane(QtWidgets.QWidget):
         thermal_layout = QtWidgets.QVBoxLayout()
         thermal_groupbox.setLayout(thermal_layout)
 
-        self.view = GraphicsLabel((1, 1))
-        self.view.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
-        self.view.sizePolicy().setHeightForWidth(True)
-        self.view.setPixmap(QtGui.QPixmap("assets/blank_square.png"))
-        self.view.setMinimumSize(200, 200)
+        # self.view = GraphicsLabel((1, 1))
+        # self.view.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+        # self.view.sizePolicy().setHeightForWidth(True)
+        # self.view.setPixmap(QtGui.QPixmap("assets/blank_square.png"))
+        # self.view.setMinimumSize(200, 200)
+        self.canvas = QtWidgets.QGraphicsScene()
+        self.view = QtWidgets.QGraphicsView(self.canvas)
+        self.view.setGeometry(0, 0, 400, 400)
         thermal_layout.addWidget(self.view)
 
         layout.addWidget(thermal_groupbox)
 
-        self.update_frame.connect(self.view.setPixmap)
+        self.update_frame.connect(self.update_frame_callback)
+
+    def update_frame_callback(self, frame: np.ndarray) -> None:
+        pen = QtGui.QPen(QtCore.Qt.PenStyle.NoPen)
+        self.canvas.clear()
+
+        for ix, row in enumerate(frame):
+            for jx, pixel in enumerate(row):
+                brush = QtGui.QBrush(
+                    QtGui.QColor(
+                        *self.colors[int(constrain(pixel, 0, self.COLORDEPTH - 1))]
+                    )
+                )
+                self.canvas.addRect(
+                    self.pixel_width * jx,
+                    self.pixel_height * ix,
+                    self.pixel_width,
+                    self.pixel_height,
+                    pen,
+                    brush,
+                )
 
 
 class WaterDropPane(QtWidgets.QWidget):
     move_dropper = QtCore.Signal(int)
+    auto_done = QtCore.Signal()
 
     def __init__(self, parent: QtWidgets.QWidget) -> None:
         super().__init__(parent)
         self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.MinimumExpanding)
-        # self.setFixedHeight(175)
+
+        self.enabled_atag = False
+        self.enabled_atag_drop = False
+
+        self.atag_goal: roslibpy.actionlib.Goal | None = None
+        self.atag_drop_goal: roslibpy.actionlib.Goal | None = None
 
         layout = QtWidgets.QVBoxLayout()
         self.setLayout(layout)
@@ -154,95 +232,175 @@ class WaterDropPane(QtWidgets.QWidget):
         water_drop_groupbox.setLayout(water_drop_layout)
         water_drop_groupbox.setMinimumWidth(100)
 
-        self.auto_state_label = QtWidgets.QLabel(
-                self.format_auto_state(0)
-        )
-        self.locked_tag_label = QtWidgets.QLabel(
-                COLORED_NONE_TEXT
-        )
-        self.countdown_label = QtWidgets.QLabel(
-                COLORED_NONE_TEXT
-        )
-        self.tags_label = QtWidgets.QLabel(
-                f"{COLORED_NONE_TEXT} (Updated at {self.get_formatted_time()})"
-        )
-        water_drop_layout.addRow("Autonomy State:", self.auto_state_label)
-        water_drop_layout.addRow("Locked Tag:", self.locked_tag_label)
-        water_drop_layout.addRow("Countdown:", self.countdown_label)
-        water_drop_layout.addRow("Visible Tags:", self.tags_label)
+        self.trigger_button = QtWidgets.QPushButton("Trigger")
+        self.trigger_button.clicked.connect(self.trigger_bdu_full)
+        water_drop_layout.addWidget(self.trigger_button)
 
-        close_radio_buttons: list[QtWidgets.QRadioButton | None] = [None] * 6
-        far_radio_buttons: list[QtWidgets.QRadioButton | None] = [None] * 7
+        # self.atag_enable_checkbox = QtWidgets.QCheckBox("Enable Apriltags")
+        #
+        # self.atag_enable_checkbox.stateChanged.connect(
+        #     self.auton_blink_trigger
+        # )
+        # water_drop_layout.addRow("Enable:", self.atag_enable_checkbox)
+        #
+        # self.atag_enable_drop_checkbox = QtWidgets.QCheckBox("Enable Apriltags For Drop")
+        #
+        # self.atag_enable_drop_checkbox.stateChanged.connect(
+        #     self.auton_drop_trigger
+        # )
+        # water_drop_layout.addRow("Enable Drop:", self.atag_enable_drop_checkbox)
 
-        self.textron_close_1 = QtWidgets.QRadioButton()
-        self.textron_close_2 = QtWidgets.QRadioButton()
-        self.textron_close_3 = QtWidgets.QRadioButton()
-        close_radio_buttons[0:3] = [self.textron_close_3, self.textron_close_2, self.textron_close_1]
-        self.textron_close_2.setDisabled(True)
-        self.textron_close_3.setDisabled(True)
-        self.textron_close_1.toggled.connect(
-                lambda: self.update_dropping_tag(2)
-        )
+        self.atag_radio_button = QtWidgets.QRadioButton()
+        self.atag_radio_button.setText('Blink')
 
-        self.textron_far_1 = QtWidgets.QRadioButton()
-        self.textron_far_2 = QtWidgets.QRadioButton()
-        self.textron_far_3 = QtWidgets.QRadioButton()
-        far_radio_buttons[0:3] = [self.textron_far_3, self.textron_far_2, self.textron_far_1]
-        self.textron_far_2.setDisabled(True)
-        self.textron_far_1.toggled.connect(
-                lambda: self.update_dropping_tag(1)
-        )
-        self.textron_far_3.toggled.connect(
-                lambda: self.update_dropping_tag(0)
-        )
+        self.atag_drop_radio_button = QtWidgets.QRadioButton()
+        self.atag_drop_radio_button.setText('Drop')
 
-        self.residential_close_1 = QtWidgets.QRadioButton()
-        self.residential_close_2 = QtWidgets.QRadioButton()
-        self.residential_close_3 = QtWidgets.QRadioButton()
-        close_radio_buttons[3:] = [self.residential_close_1, self.residential_close_2, self.residential_close_3]
-        self.residential_close_2.setDisabled(True)
-        self.residential_close_1.toggled.connect(
-                lambda: self.update_dropping_tag(4)
-        )
-        self.residential_close_3.toggled.connect(
-                lambda: self.update_dropping_tag(5)
-        )
-
-        self.residential_far_1 = QtWidgets.QRadioButton()
-        self.residential_far_2 = QtWidgets.QRadioButton()
-        self.residential_far_3 = QtWidgets.QRadioButton()
-        far_radio_buttons[3:6] = [self.residential_far_1, self.residential_far_2, self.residential_far_3]
-        self.residential_far_2.setDisabled(True)
-        self.residential_far_3.setDisabled(True)
-        self.residential_far_1.toggled.connect(
-                lambda: self.update_dropping_tag(3)
-        )
-
-        self.none_button = QtWidgets.QRadioButton()
-        print(far_radio_buttons)
-        far_radio_buttons[6] = self.none_button
-        self.none_button.toggled.connect(
-                lambda: self.update_dropping_tag(-1)
-        )
+        self.atag_cancel_button = QtWidgets.QPushButton(QtGui.QIcon.fromTheme('process-stop'))
 
         radio_button_widget = QtWidgets.QWidget()
         radio_button_layout = QtWidgets.QGridLayout()
         radio_button_widget.setLayout(radio_button_layout)
 
-        index = 0
-        for button in far_radio_buttons:
-            if button is not None:
-                radio_button_layout.addWidget(button, 0, index)
-            index += 1
-        index = 0
-        for button in close_radio_buttons:
-            if button is not None:
-                radio_button_layout.addWidget(button, 1, index)
-            index += 1
+        radio_button_layout.addWidget(self.atag_radio_button, 0, 0)
+        radio_button_layout.addWidget(self.atag_radio_button, 0, 1)
+        radio_button_layout.addWidget(self.atag_cancel_button, 0, 2)
 
-        water_drop_layout.addWidget(radio_button_widget)
+        water_drop_layout.addRow('Autonomy: ', radio_button_widget)
+
+        self.tags_label = QtWidgets.QLabel(
+            f"{COLORED_NONE_TEXT}"
+        )
+        water_drop_layout.addRow("Visible Tags:", self.tags_label)
 
         layout.addWidget(water_drop_groupbox)
+
+        self.auto_done.connect(self.stop_auton_drop)
+
+        self.bdu_full_trigger = None
+        self.bdu_trigger = None
+        self.bdu_reset = None
+
+        self.current_mode = 0
+
+    def set_auton_drop_mode(self, mode: int) -> None:
+        if self.atag_cancel_button is not None:
+            self.atag_cancel_button.setEnabled(mode != 0)
+
+        if mode != self.current_mode:
+            if mode > 0:
+                if self.auton_drop_client.running:
+                    self.auton_drop_client.cancel()
+                self.auton_drop_client.send_goal({'should_drop': mode == 2})
+            else:
+                self.auton_drop_client.cancel()
+
+        self.current_mode = mode
+
+    def auton_feedback_callback(self, msg: dict[str, Any]) -> None:
+        apriltag_id = msg.get('apriltag_id', None)
+
+        if self.current_mode == 1:
+            logger.info(f'Blinking for tag: {apriltag_id}')
+        else:
+            logger.info(f'Dropping for tag: {apriltag_id}')
+
+    def auton_drop_finished(self, _: dict[str, Any]) -> None:
+        self.stop_auton_drop()
+
+    def stop_auton_drop(self) -> None:
+        self.set_auton_drop_mode(0)
+        self.atag_radio_button.setChecked(False)
+        self.atag_cancel_button.setChecked(False)
+
+    def trigger_bdu_full(self) -> None:
+        self.stop_auton_drop()
+        self.bdu_full_trigger.call(
+            roslibpy.ServiceRequest(),
+            callback=lambda msg: logger.debug(
+                'Bdu trigger result: ' + msg.get('message', '')
+            )
+        )
+
+    def trigger_bdu(self) -> None:
+        self.stop_auton_drop()
+        self.bdu_trigger.call(
+            roslibpy.ServiceRequest(),
+            callback=lambda msg: logger.debug(
+                'Bdu trigger m result: ' + msg.get('message', '')
+            )
+        )
+
+    def reset_bdu(self) -> None:
+        self.stop_auton_drop()
+        self.bdu_reset.call(
+            roslibpy.ServiceRequest(),
+            callback=lambda msg: logger.debug(
+                'Bdu reset m result: ' + msg.get('message', '')
+            )
+        )
+
+    def setup_ros(self, client: roslibpy.Ros) -> None:
+        self.bdu_full_trigger = roslibpy.Service(
+            client,
+            '/bdu/full_trigger',
+            'std_srvs/srv/Trigger'
+        )
+        self.bdu_trigger = roslibpy.Service(
+            client,
+            '/bdu/trigger',
+            'std_srvs/srv/Trigger'
+        )
+        self.bdu_reset = roslibpy.Service(
+            client,
+            '/bdu/reset',
+            'std_srvs/srv/Trigger'
+        )
+
+        self.auton_drop_client = Action(
+            client,
+            0,
+            self.auton_feedback_callback,
+            self.auton_drop_finished
+        )
+
+        def dummy(a=None, b=None):
+            pass
+
+        def auto_drop(msg):
+            self.tags_label.setText(self.format_visible_tags(str([d['id'] for d in msg['detections']])))
+            if len(msg['detections']) > 0:
+                if self.enabled_atag_drop:
+                    print(f"Dropping for tag: {msg['detections'][0]}")
+                    self.blink_t.call(
+                        roslibpy.ServiceRequest({'mode': 1, 'argument': 3, 'color': {'r': 252, 'g': 190, 'b': 3}}),
+                        callback=dummy
+                    )
+
+                    def do_drop():
+                        time.sleep(1)
+                        self.bdu_full_trigger.call(
+                            roslibpy.ServiceRequest(),
+                            callback=dummy
+                        )
+
+                    Thread(
+                        target=do_drop,
+                        daemon=True
+                    ).start()
+
+
+                elif self.enabled_atag:
+                    print(f"Blinking for tag: {msg['detections'][0]}")
+                    self.blink_t.call(
+                        roslibpy.ServiceRequest({'mode': 1, 'argument': 3, 'color': {'r': 252, 'g': 190, 'b': 3}}),
+                        callback=dummy
+                    )
+
+                self.enabled_atag_drop = False
+                self.enabled_atag = False
+
+                self.auto_done.emit()
 
     def process_message(self, topic: str, payload: str) -> None:
         if topic == "avr/autonomy/water_drop_state":
@@ -301,13 +459,13 @@ class WaterDropPane(QtWidgets.QWidget):
 
     def update_dropping_tag(self, tag_id: int) -> None:
         self.client.publish(
-                "avr/autonomy/set_drop_tag",
-                json.dumps(
-                        {
-                            "id": tag_id
-                        }
-                ),
-                qos=2
+            "avr/autonomy/set_drop_tag",
+            json.dumps(
+                {
+                    "id": tag_id
+                }
+            ),
+            qos=2
         )
 
     @staticmethod
