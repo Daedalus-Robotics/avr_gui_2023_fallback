@@ -148,7 +148,7 @@ class RosConnectionWidget(QtWidgets.QWidget):
         )
         self.disconnect_button.clicked.connect(self.ros_client.logout)  # type: ignore
 
-        self.ros_client_menu = QtWidgets.QMenu("ROS Bridge ")
+        self.ros_client_menu = QtWidgets.QMenu("ROS Bridge")
 
         self.ros_client_menu_connect = QtGui.QAction("Connect")
 
