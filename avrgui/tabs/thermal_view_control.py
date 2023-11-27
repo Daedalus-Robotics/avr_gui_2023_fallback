@@ -485,8 +485,6 @@ class ThermalViewControlWidget(BaseTabWidget):
     def setup_ros(self, client: roslibpy.Ros) -> None:
         super().setup_ros(client)
 
-        print("thermal test")
-
         self.thermal_raw = roslibpy.Topic(
             client,
             '/thermal/raw',
