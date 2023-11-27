@@ -317,20 +317,21 @@ class WaterDropPane(QtWidgets.QWidget):
         self.close_log_button.setEnabled(True)
         if self.log_file is None:
             self.log_file = open(f'log/{datetime.datetime.utcnow().isoformat()}.log', 'w')
-            self.log_start_time = time.time()
-            self.log_to_file(f'Started log at {int(self.log_start_time)}')
+            self.log_start_time = time.time() + 5
+            self.log_to_file(f'Started log at {round(self.log_start_time)}')
             self.controller.mic_button.led_state = True
+            Thread(target=self.show_log_countdown, daemon=True).start()
 
     def log_to_file(self, text: str) -> None:
         if self.log_file is not None:
-            self.log_file.write(f'{int(time.time() - self.log_start_time)}: {text}\n')
+            self.log_file.write(f'{round(time.time() - self.log_start_time)}: {text}\n')
             self.log_file.flush()
 
     def close_log_file(self) -> None:
         self.open_log_button.setEnabled(True)
         self.close_log_button.setEnabled(False)
         if self.log_file is not None:
-            self.log_to_file(f'Closed file at {int(time.time())} (Ran for {int(time.time() - self.log_start_time)}s)')
+            self.log_to_file(f'Closed file at {round(time.time())} (Ran for {round(time.time() - self.log_start_time)}s)')
             self.log_file.close()
             Toast.get().show_message(f'Saved log to: {self.log_file.name}', 4)
             self.log_file = None
@@ -448,6 +449,13 @@ class WaterDropPane(QtWidgets.QWidget):
             self.auton_feedback_callback,
             self.auton_drop_finished
         )
+
+    @staticmethod
+    def show_log_countdown() -> None:
+        for countdown in range(5, 0, -1):
+            Toast.get().send_message.emit(f'Log timer starting in {countdown} seconds...', 1.5)
+            time.sleep(1)
+        Toast.get().send_message.emit(f'Log timer started', 2)
 
     @staticmethod
     def format_visible_tags(tags: list[int]) -> str:
