@@ -88,7 +88,7 @@ class VMCTelemetryWidget(BaseTabWidget):
     # is already published there.
     vehicle_state_signal = QtCore.Signal(bool, object)
     battery_state_signal = QtCore.Signal(bool, float, float)
-    pose_signal = QtCore.Signal(tuple[float, float, float], tuple[float, float, float, float])
+    pose_signal = QtCore.Signal(object, object)
     pose_state_signal = QtCore.Signal(object)
     formatted_battery_signal = QtCore.Signal(str, str)
     formatted_armed_signal = QtCore.Signal(str)
@@ -167,11 +167,11 @@ class VMCTelemetryWidget(BaseTabWidget):
             lambda _, voltage, __: self.battery_voltage_label.setText(self.format_battery_voltage(voltage))
         )
         self.battery_state_signal.connect(
-            lambda _, __, current: self.battery_voltage_label.setText(self.format_battery_current(current))
+            lambda _, __, current: self.battery_current_label.setText(self.format_battery_current(current))
         )
 
         self.battery_state_signal.connect(
-            lambda _, voltage, current: self.battery_state_signal.emit(
+            lambda _, voltage, current: self.formatted_battery_signal.emit(
                 self.format_battery_voltage(voltage),
                 self.format_battery_current(current)
             )
@@ -187,6 +187,9 @@ class VMCTelemetryWidget(BaseTabWidget):
         self.vehicle_state_signal.connect(
             lambda armed, _: self.armed_label.setText(self.format_armed_text(armed))
         )
+        self.vehicle_state_signal.connect(
+            lambda armed, _: self.formatted_armed_signal.emit(self.format_armed_text(armed))
+        )
 
         # flight mode row
         self.flight_mode_label = QtWidgets.QLabel(COLORED_UNKNOWN_TEXT)
@@ -194,6 +197,9 @@ class VMCTelemetryWidget(BaseTabWidget):
         fcc_layout.addWidget(self.flight_mode_label, 2, 1)
         self.vehicle_state_signal.connect(
             lambda _, nav_state: self.flight_mode_label.setText(self.format_nav_state(nav_state))
+        )
+        self.vehicle_state_signal.connect(
+            lambda _, nav_state: self.formatted_mode_signal.emit(self.format_nav_state(nav_state))
         )
 
         top_layout.addWidget(fcc_groupbox)
@@ -321,7 +327,7 @@ class VMCTelemetryWidget(BaseTabWidget):
         layout.addWidget(self.main_shutdown_button)
 
     def status_callback_fcm(self, msg: dict[str, Any]) -> None:
-        arming_state = bool(msg['arming_state'])
+        arming_state = msg['arming_state'] == 2
         nav_state = PX4VehicleStatusNavState(msg['nav_state'])
 
         self.vehicle_state_signal.emit(arming_state, nav_state)
@@ -386,7 +392,7 @@ class VMCTelemetryWidget(BaseTabWidget):
 
         self.zed_pose_state_subscriber = roslibpy.Topic(
             client,
-            '/zed/zed_node/pose/state',
+            '/zed/zed_node/pose/status',
             'zed_interfaces/msg/PosTrackStatus'
         )
         self.zed_pose_state_subscriber.subscribe(self.pose_state_callback_zed)
@@ -400,7 +406,7 @@ class VMCTelemetryWidget(BaseTabWidget):
     def reset_fcm(self) -> None:
         self.fcm_command_publisher.publish(
             {
-                'command': PX4VehicleCommand.VEHICLE_CMD_PREFLIGHT_REBOOT_SHUTDOWN,
+                'command': PX4VehicleCommand.VEHICLE_CMD_PREFLIGHT_REBOOT_SHUTDOWN.value,
                 'param1': float(1)
             }
         )
@@ -408,7 +414,7 @@ class VMCTelemetryWidget(BaseTabWidget):
     def set_global_position_fcm(self, latitude: float, longitude: float, altitude: float = 0) -> None:
         self.fcm_command_publisher.publish(
             {
-                'command': PX4VehicleCommand.VEHICLE_CMD_SET_GPS_GLOBAL_ORIGIN,
+                'command': PX4VehicleCommand.VEHICLE_CMD_SET_GPS_GLOBAL_ORIGIN.value,
                 'param5': latitude,
                 'param6': longitude,
                 'param7': altitude
@@ -416,6 +422,9 @@ class VMCTelemetryWidget(BaseTabWidget):
         )
 
     # ToDo: Maybe add some calibration buttons for level horizon and mag
+
+    def shutdown_vmc(self) -> None:
+        pass
 
     def clear(self) -> None:
         # status
@@ -438,40 +447,41 @@ class VMCTelemetryWidget(BaseTabWidget):
         self.att_p_line_edit.setText(UNKNOWN_TEXT)
         self.att_y_line_edit.setText(UNKNOWN_TEXT)
 
-    @staticmethod
-    def restart_service(callback: Callable[[], None],
+    def restart_service(self, callback: Callable[[], None],
                         show_dialog: bool = False, title: str = "", message: str = "") -> None:
-        do_reset = True
-        if show_dialog:
-            if '\n' in message:
-                split = message.split('‡')
-                message = ""
-                num = 0
-                for text in split[0:-1]:
-                    message += text
-                    if not num == len(split[0:-1]) - 1:
-                        message += "\n"
-                    num += 1
-                info = split[-1]
-            else:
-                info = None
+        if self.client is not None and self.client.is_connected:
+            do_reset = True
+            if show_dialog:
+                if '\n' in message:
+                    split = message.split('‡')
+                    message = ""
+                    num = 0
+                    for text in split[0:-1]:
+                        message += text
+                        if not num == len(split[0:-1]) - 1:
+                            message += "\n"
+                        num += 1
+                    info = split[-1]
+                else:
+                    info = None
 
-            dialog = QtWidgets.QMessageBox()
-            dialog.setWindowTitle(title)
-            dialog.setText(message)
-            if info is not None:
-                dialog.setInformativeText(info)
-            dialog.setIcon(QtWidgets.QMessageBox.Critical)
-            dialog.setStandardButtons(QtWidgets.QMessageBox.Cancel | QtWidgets.QMessageBox.Ok)
-            dialog.setDefaultButton(QtWidgets.QMessageBox.Ok)
-            dialog.setEscapeButton(QtWidgets.QMessageBox.Cancel)
-            if dialog.exec_() != QtWidgets.QMessageBox.Ok:
-                do_reset = False
-        if do_reset:
-            callback()
+                dialog = QtWidgets.QMessageBox()
+                dialog.setWindowTitle(title)
+                dialog.setText(message)
+                if info is not None:
+                    dialog.setInformativeText(info)
+                dialog.setIcon(QtWidgets.QMessageBox.Critical)
+                dialog.setStandardButtons(QtWidgets.QMessageBox.Cancel | QtWidgets.QMessageBox.Ok)
+                dialog.setDefaultButton(QtWidgets.QMessageBox.Ok)
+                dialog.setEscapeButton(QtWidgets.QMessageBox.Cancel)
+                if dialog.exec_() != QtWidgets.QMessageBox.Ok:
+                    do_reset = False
+            if do_reset:
+                callback()
 
     @staticmethod
     def format_battery_voltage(voltage: float) -> str:
+        voltage = round(voltage, 2)
         if voltage <= FAULT_BATTERY_VOLTAGE:
             start = f"<a style='color:{RED_COLOR};'>"
         elif voltage <= LOW_BATTERY_VOLTAGE:
@@ -482,6 +492,7 @@ class VMCTelemetryWidget(BaseTabWidget):
 
     @staticmethod
     def format_battery_current(current: float) -> str:
+        current = round(current, 1)
         return f"<a style='color:{LIGHT_BLUE_COLOR};'>{current} A</a>"
 
     @staticmethod
