@@ -188,6 +188,15 @@ class RosConnectionWidget(QtWidgets.QWidget):
 
         self.ros_client.connection_state.connect(ros_client_menu_state)
 
+    def connect_slot(self) -> None:
+        if self.connection_state not in (ConnectionState.CONNECTED, ConnectionState.CONNECTING):
+            try:
+                port = int(self.port_line_edit.text())
+            except ValueError:
+                return
+            self.ros_client.login(self.hostname_line_edit.text(), port)
+            self.ros_client_menu_connect.setChecked(True)
+
     def set_connected_state(self, connection_state: ConnectionState) -> None:
         """
         Set the connected state of the SocketIO connection widget elements.

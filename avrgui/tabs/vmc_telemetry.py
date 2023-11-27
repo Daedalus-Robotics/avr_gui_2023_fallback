@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
-from typing import Callable
+from enum import Enum
+from typing import Callable, Any
 
 import colour
-from PySide6 import QtCore, QtWidgets
+import roslibpy
+from PySide6 import QtCore, QtWidgets, QtGui
 from bell.avr.mqtt.payloads import (
     AvrFcmAttitudeEulerPayload,
     AvrFcmBatteryPayload,
@@ -21,17 +23,76 @@ from ..lib.toast import Toast
 from ..lib.widgets import DisplayLineEdit, StatusLabel
 
 BATTERY_COLORS: list[colour.Color] = colour.Color("green").range_to(colour.Color("red"), 101)
+COLORED_UNKNOWN_TEXT = "<span style='color:orange;'>Unknown</span>"
+UNKNOWN_TEXT = "Unknown"
+RED_COLOR = "red"
+LIGHT_BLUE_COLOR = "#0091ff"
+YELLOW_COLOR = "#ffb800"
+GREEN_COLOR = "#1bc700"
+
+NAV_STATE_PREFIX_LENGTH = len('NAVIGATION_STATE_')
+
+LOW_BATTERY_VOLTAGE = 15.8
+FAULT_BATTERY_VOLTAGE = 14.8
+
+
+class PX4VehicleCommand(Enum):
+    VEHICLE_CMD_PREFLIGHT_REBOOT_SHUTDOWN = 246
+    VEHICLE_CMD_SET_GPS_GLOBAL_ORIGIN = 100000
+
+
+class PX4VehicleStatusNavState(Enum):
+    NAVIGATION_STATE_MANUAL = 0  # Manual mode
+    NAVIGATION_STATE_ALTCTL = 1  # Altitude control mode
+    NAVIGATION_STATE_POSCTL = 2  # Position control mode
+    NAVIGATION_STATE_AUTO_MISSION = 3  # Auto mission mode
+    NAVIGATION_STATE_AUTO_LOITER = 4  # Auto loiter mode
+    NAVIGATION_STATE_AUTO_RTL = 5  # Auto return to launch mode
+    NAVIGATION_STATE_UNUSED3 = 8  # Free slot
+    NAVIGATION_STATE_UNUSED = 9  # Free slot
+    NAVIGATION_STATE_ACRO = 10  # Acro mode
+    NAVIGATION_STATE_UNUSED1 = 11  # Free slot
+    NAVIGATION_STATE_DESCEND = 12  # Descend mode (no position control)
+    NAVIGATION_STATE_TERMINATION = 13  # Termination mode
+    NAVIGATION_STATE_OFFBOARD = 14
+    NAVIGATION_STATE_STAB = 15  # Stabilized mode
+    NAVIGATION_STATE_UNUSED2 = 16  # Free slot
+    NAVIGATION_STATE_AUTO_TAKEOFF = 17  # Takeoff
+    NAVIGATION_STATE_AUTO_LAND = 18  # Land
+    NAVIGATION_STATE_AUTO_FOLLOW_TARGET = 19  # Auto Follow
+    NAVIGATION_STATE_AUTO_PRECLAND = 20  # Precision land with landing target
+    NAVIGATION_STATE_ORBIT = 21  # Orbit in a circle
+    NAVIGATION_STATE_AUTO_VTOL_TAKEOFF = 22  # Takeoff, transition, establish loiter
+    NAVIGATION_STATE_EXTERNAL1 = 23
+    NAVIGATION_STATE_EXTERNAL2 = 24
+    NAVIGATION_STATE_EXTERNAL3 = 25
+    NAVIGATION_STATE_EXTERNAL4 = 26
+    NAVIGATION_STATE_EXTERNAL5 = 27
+    NAVIGATION_STATE_EXTERNAL6 = 28
+    NAVIGATION_STATE_EXTERNAL7 = 29
+    NAVIGATION_STATE_EXTERNAL8 = 30
+    NAVIGATION_STATE_MAX = 31
+
+
+class ZEDPositionStatus(Enum):
+    SEARCHING = 0
+    OK = 1
+    OFF = 2
+    FPS_TOO_LOW = 3
+    SEARCHING_FLOOR_PLANE = 3
 
 
 class VMCTelemetryWidget(BaseTabWidget):
     # This widget provides a minimal QGroundControl-esque interface.
     # In our case, this operates over MQTT as all the relevant data
     # is already published there.
-    armed_state = QtCore.Signal(bool)
-    set_autonomous = QtCore.Signal(bool)
-    voltage_update = QtCore.Signal(float)
-    armed_update = QtCore.Signal(str)
-    mode_update = QtCore.Signal(str)
+    vehicle_state_signal = QtCore.Signal(bool, object)
+    battery_state_signal = QtCore.Signal(bool, float, float)
+    pose_signal = QtCore.Signal(tuple[float, float, float], tuple[float, float, float, float])
+    pose_state_signal = QtCore.Signal(object)
+    formatted_battery_signal = QtCore.Signal(str, str)
+    formatted_armed_signal = QtCore.Signal(str)
+    formatted_mode_signal = QtCore.Signal(str)
 
     def __init__(self, parent: QtWidgets.QWidget, client: RosBridgeClient, controller) -> None:
         super().__init__(parent, client)
@@ -40,40 +101,37 @@ class VMCTelemetryWidget(BaseTabWidget):
 
         self.last_armed = False
         self.armed = False
-        self.satellites_label = None
-        self.battery_percent_bar = None
         self.battery_voltage_label = None
+        self.battery_current_label = None
         self.armed_label = None
 
-        self.loc_x_line_edit = None
-        self.loc_y_line_edit = None
-        self.loc_z_line_edit = None
-        self.loc_lat_line_edit = None
-        self.loc_lon_line_edit = None
-        self.loc_alt_line_edit = None
+        self.pos_x_line_edit = None
+        self.pos_y_line_edit = None
+        self.pos_z_line_edit = None
         self.att_r_line_edit = None
         self.att_p_line_edit = None
         self.att_y_line_edit = None
         self.flight_mode_label = None
 
-        self.service_map: dict[str, Callable] = {}
-        self.mavp2p_status_label = None
+        self.service_map: dict[str, Callable[[bool], None]] = {}
+        self.zed_tracking_status_label = None
+        self.vmc_service_status_label = None
         self.fcm_status_label = None
         self.pcm_status_label = None
-        self.vmc_status_label = None
 
         self.main_shutdown_button = None
+        self.main_shutdown_callback: Callable[[], None] = lambda: None
 
-        self.service_states = {}
         self.battery_level = 0
-        self.autonomy_enabled = False
 
         self.setWindowTitle("VMC Telemetry")
 
-        def set_autonomy(state: bool):
-            self.autonomy_enabled = state
-
-        self.set_autonomous.connect(set_autonomy)
+        self.pcc_restart_service: roslibpy.Service | None = None
+        self.fcm_command_publisher: roslibpy.Topic | None = None
+        self.fcm_status_subscriber: roslibpy.Topic | None = None
+        self.fcm_battery_status_subscriber: roslibpy.Topic | None = None
+        self.zed_pose_subscriber: roslibpy.Topic | None = None
+        self.zed_pose_state_subscriber: roslibpy.Topic | None = None
 
     def build(self) -> None:
         """
@@ -82,161 +140,112 @@ class VMCTelemetryWidget(BaseTabWidget):
         layout = QtWidgets.QVBoxLayout(self)
         self.setLayout(layout)
 
-        # top groupbox
-        top_groupbox = QtWidgets.QGroupBox("FCC Status")
-        top_groupbox.setSizePolicy(
+        # bottom groupbox
+        top_group = QtWidgets.QFrame()
+        top_group.setSizePolicy(
             QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed
         )
-        top_layout = QtWidgets.QFormLayout()
-        top_groupbox.setLayout(top_layout)
+        top_layout = QtWidgets.QHBoxLayout()
+        top_group.setLayout(top_layout)
 
-        # satellites row
-        self.satellites_label = QtWidgets.QLabel("")
-        top_layout.addRow(QtWidgets.QLabel("Satellites:"), self.satellites_label)
+        # fcc groupbox
+        fcc_groupbox = QtWidgets.QGroupBox("FCC")
+        fcc_groupbox.setSizePolicy(
+            QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed
+        )
+        fcc_layout = QtWidgets.QGridLayout()
+        fcc_groupbox.setLayout(fcc_layout)
 
         # battery row
         battery_layout = QtWidgets.QHBoxLayout()
 
-        self.battery_percent_bar = QtWidgets.QProgressBar()
-        self.battery_percent_bar.setRange(0, 100)
-        self.battery_percent_bar.setTextVisible(True)
-        battery_layout.addWidget(self.battery_percent_bar)
-
-        self.battery_voltage_label = QtWidgets.QLabel("")
+        self.battery_voltage_label = QtWidgets.QLabel(COLORED_UNKNOWN_TEXT)
+        self.battery_current_label = QtWidgets.QLabel("")
         battery_layout.addWidget(self.battery_voltage_label)
+        battery_layout.addWidget(self.battery_current_label)
+        self.battery_state_signal.connect(
+            lambda _, voltage, __: self.battery_voltage_label.setText(self.format_battery_voltage(voltage))
+        )
+        self.battery_state_signal.connect(
+            lambda _, __, current: self.battery_voltage_label.setText(self.format_battery_current(current))
+        )
 
-        top_layout.addRow(QtWidgets.QLabel("Battery:"), battery_layout)
+        self.battery_state_signal.connect(
+            lambda _, voltage, current: self.battery_state_signal.emit(
+                self.format_battery_voltage(voltage),
+                self.format_battery_current(current)
+            )
+        )
+
+        fcc_layout.addWidget(QtWidgets.QLabel("Battery:"), 0, 0)
+        fcc_layout.addLayout(battery_layout, 0, 1)
 
         # armed row
-        self.armed_label = QtWidgets.QLabel("")
-        top_layout.addRow(QtWidgets.QLabel("Armed Status:"), self.armed_label)
+        self.armed_label = QtWidgets.QLabel(COLORED_UNKNOWN_TEXT)
+        fcc_layout.addWidget(QtWidgets.QLabel("Armed Status:"), 1, 0)
+        fcc_layout.addWidget(self.armed_label, 1, 1)
+        self.vehicle_state_signal.connect(
+            lambda armed, _: self.armed_label.setText(self.format_armed_text(armed))
+        )
 
         # flight mode row
-        self.flight_mode_label = QtWidgets.QLabel("")
-        top_layout.addRow(QtWidgets.QLabel("Flight Mode:"), self.flight_mode_label)
-
-        layout.addWidget(top_groupbox)
-
-        # bottom groupbox
-        bottom_group = QtWidgets.QFrame()
-        bottom_group.setSizePolicy(
-            QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed
+        self.flight_mode_label = QtWidgets.QLabel(COLORED_UNKNOWN_TEXT)
+        fcc_layout.addWidget(QtWidgets.QLabel("Flight Mode:"), 2, 0)
+        fcc_layout.addWidget(self.flight_mode_label, 2, 1)
+        self.vehicle_state_signal.connect(
+            lambda _, nav_state: self.flight_mode_label.setText(self.format_nav_state(nav_state))
         )
-        bottom_layout = QtWidgets.QHBoxLayout()
-        bottom_group.setLayout(bottom_layout)
 
-        # bottom-left quadrant
-        bottom_left_groupbox = QtWidgets.QGroupBox("Location")
-        bottom_left_layout = QtWidgets.QFormLayout()
-        bottom_left_groupbox.setLayout(bottom_left_layout)
+        top_layout.addWidget(fcc_groupbox)
+
+        # pose
+        pose_groupbox = QtWidgets.QGroupBox("Pose")
+        pose_layout = QtWidgets.QFormLayout()
+        pose_groupbox.setLayout(pose_layout)
 
         # xyz row
         loc_xyz_layout = QtWidgets.QHBoxLayout()
 
-        self.loc_x_line_edit = DisplayLineEdit("")
-        loc_xyz_layout.addWidget(self.loc_x_line_edit)
+        self.pos_x_line_edit = DisplayLineEdit(UNKNOWN_TEXT)
+        loc_xyz_layout.addWidget(self.pos_x_line_edit)
 
-        self.loc_y_line_edit = DisplayLineEdit("")
-        loc_xyz_layout.addWidget(self.loc_y_line_edit)
+        self.pos_y_line_edit = DisplayLineEdit(UNKNOWN_TEXT)
+        loc_xyz_layout.addWidget(self.pos_y_line_edit)
 
-        self.loc_z_line_edit = DisplayLineEdit("")
-        loc_xyz_layout.addWidget(self.loc_z_line_edit)
+        self.pos_z_line_edit = DisplayLineEdit(UNKNOWN_TEXT)
+        loc_xyz_layout.addWidget(self.pos_z_line_edit)
 
-        bottom_left_layout.addRow(
-            QtWidgets.QLabel("Local NED (x, y, z):"), loc_xyz_layout
+        pose_layout.addRow(
+            QtWidgets.QLabel("Local FLU (x, y, z):"), loc_xyz_layout
         )
-
-        # lat, lon, alt row
-        loc_lla_layout = QtWidgets.QHBoxLayout()
-
-        self.loc_lat_line_edit = DisplayLineEdit("", round_digits=8)
-        loc_lla_layout.addWidget(self.loc_lat_line_edit)
-
-        self.loc_lon_line_edit = DisplayLineEdit("", round_digits=8)
-        loc_lla_layout.addWidget(self.loc_lon_line_edit)
-
-        self.loc_alt_line_edit = DisplayLineEdit("")
-        loc_lla_layout.addWidget(self.loc_alt_line_edit)
-
-        bottom_left_layout.addRow(
-            QtWidgets.QLabel("Global (lat, lon, alt):"), loc_lla_layout
-        )
-
-        bottom_layout.addWidget(bottom_left_groupbox)
-
-        # bottom-right quadrant
-        bottom_right_groupbox = QtWidgets.QGroupBox("Attitude")
-        bottom_right_layout = QtWidgets.QFormLayout()
-        bottom_right_groupbox.setLayout(bottom_right_layout)
 
         # euler row
         att_rpy_layout = QtWidgets.QHBoxLayout()
 
-        self.att_r_line_edit = DisplayLineEdit("")
+        self.att_r_line_edit = DisplayLineEdit(UNKNOWN_TEXT)
         att_rpy_layout.addWidget(self.att_r_line_edit)
 
-        self.att_p_line_edit = DisplayLineEdit("")
+        self.att_p_line_edit = DisplayLineEdit(UNKNOWN_TEXT)
         att_rpy_layout.addWidget(self.att_p_line_edit)
 
-        self.att_y_line_edit = DisplayLineEdit("")
+        self.att_y_line_edit = DisplayLineEdit(UNKNOWN_TEXT)
         att_rpy_layout.addWidget(self.att_y_line_edit)
 
-        bottom_right_layout.addRow(QtWidgets.QLabel("Euler (r, p , y)"), att_rpy_layout)
+        pose_layout.addRow(QtWidgets.QLabel("Euler (r, p , y)"), att_rpy_layout)
 
-        # auaternion row
-        # quaternion_layout = QtWidgets.QHBoxLayout()
+        top_layout.addWidget(pose_groupbox)
 
-        # self.att_w_line_edit = DisplayLineEdit("")
-        # quaternion_layout.addWidget(self.att_w_line_edit)
+        def update_pose(position: tuple[float, float, float],
+                        _: tuple[float, float, float, float]) -> None:
+            self.pos_x_line_edit.setText(position[0])
+            self.pos_y_line_edit.setText(position[1])
+            self.pos_z_line_edit.setText(position[2])
 
-        # self.att_x_line_edit = DisplayLineEdit("")
-        # quaternion_layout.addWidget(self.att_x_line_edit)
+            # ToDo: Convert quaternion to rpy and set values
 
-        # self.att_y_line_edit = DisplayLineEdit("")
-        # quaternion_layout.addWidget(self.att_y_line_edit)
+        self.pose_signal.connect(update_pose)
 
-        # self.att_z_line_edit = DisplayLineEdit("")
-        # quaternion_layout.addWidget(self.att_z_line_edit)
-
-        # bottom_right_layout.addRow(
-        #     QtWidgets.QLabel("Quaternion (w, x, y, z):"), quaternion_layout
-        # )
-
-        bottom_layout.addWidget(bottom_right_groupbox)
-
-        layout.addWidget(bottom_group)
-
-        # ==========================
-        # # Status
-        # module_status_groupbox = QtWidgets.QGroupBox("Status")
-        # module_status_groupbox.setSizePolicy(
-        #         QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed
-        # )
-        # module_status_layout = QtWidgets.QHBoxLayout()
-        # module_status_groupbox.setLayout(module_status_layout)
-        #
-        # # data structure to hold the topic prefixes and the corresponding widget
-        # self.topic_status_map: Dict[str, StatusLabel] = {}
-        # # data structure to hold timers to reset services to unhealthy
-        # self.topic_timer: Dict[str, QtCore.QTimer] = {}
-        #
-        # # pcc_status = StatusLabel("PCM")
-        # # self.topic_status_map["avr/pcm"] = pcc_status
-        # # status_layout.addWidget(pcc_status)
-        #
-        # vio_status = StatusLabel("VIO")
-        # self.topic_status_map["avr/vio"] = vio_status
-        # module_status_layout.addWidget(vio_status)
-        #
-        # at_status = StatusLabel("AT")
-        # self.topic_status_map["avr/apriltag"] = at_status
-        # module_status_layout.addWidget(at_status)
-        #
-        # fus_status = StatusLabel("FUS")
-        # self.topic_status_map["avr/fusion"] = fus_status
-        # module_status_layout.addWidget(fus_status)
-        #
-        # layout.addWidget(module_status_groupbox)
+        layout.addWidget(top_group)
 
         states_groupbox = QtWidgets.QGroupBox("States")
         states_groupbox.setSizePolicy(
@@ -247,106 +256,191 @@ class VMCTelemetryWidget(BaseTabWidget):
 
         y = 0
 
-        self.mavp2p_status_label = StatusLabel("MavP2P")
+        self.zed_tracking_status_label = StatusLabel("ZED Tracking")
+        states_layout.addWidget(self.zed_tracking_status_label, y, 0)
+        self.service_map["zed_tracking"] = self.zed_tracking_status_label.set_health
+        self.pose_state_signal.connect(
+            lambda state: self.zed_tracking_status_label.set_health(state == ZEDPositionStatus.OK)
+        )
+
+        y += 1
+
+        self.vmc_service_status_label = StatusLabel("ROS2 Launch File")
         restart_button = QtWidgets.QPushButton("Restart")
-        restart_button.clicked.connect(lambda: self.restart_service("mavp2p", False))
-        states_layout.addWidget(self.mavp2p_status_label, y, 0)
+        restart_button.clicked.connect(lambda: self.restart_service(
+            lambda: None  # ToDo: Make this run 'sudo systemctl restart vmc'
+        ))
+        states_layout.addWidget(self.vmc_service_status_label, y, 0)
         states_layout.addWidget(restart_button, y, 1)
-        self.service_map["mavp2p"] = self.mavp2p_status_label.set_health
-        self.service_states["mavp2p"] = False
+        self.service_map["vmc_service"] = self.vmc_service_status_label.set_health
+        self.vmc_service_status_label.set_health(True)
 
         y += 1
 
         self.fcm_status_label = StatusLabel("Flight Controller")
         restart_button = QtWidgets.QPushButton("Restart")
-        fcm_restart_message = "This will restart the flight controller.If the drone is currently flying, it will fall."
-        restart_button.clicked.connect(lambda: self.restart_service("fcc", True, fcm_restart_message))
+        restart_button.clicked.connect(lambda: self.restart_service(
+            self.reset_fcm,
+            True,
+            "Restart Flight Controller",
+            "This will restart the flight controller.\nIf the drone is currently flying, it will fall."
+        ))
         states_layout.addWidget(self.fcm_status_label, y, 0)
         states_layout.addWidget(restart_button, y, 1)
         self.service_map["fcc"] = self.fcm_status_label.set_health
-        self.service_states["fcc"] = False
+        self.battery_state_signal.connect(lambda connected, voltage, _: self.fcm_status_label.set_health(
+            connected and voltage > FAULT_BATTERY_VOLTAGE
+        ))
 
         y += 1
 
         self.pcm_status_label = StatusLabel("Peripheral Controller")
         restart_button = QtWidgets.QPushButton("Restart")
-        restart_button.clicked.connect(lambda: self.restart_service("pcc", False))
+        restart_button.clicked.connect(lambda: self.restart_service(
+            self.reset_pcc,
+            True,
+            "Restart Peripheral Controller"
+            "This will restart the peripheral controller.\nIt may also stop the servos from working."
+        ))
         states_layout.addWidget(self.pcm_status_label, y, 0)
-        states_layout.addWidget(restart_button, 2, 1)
-        self.service_map["pcc"] = self.pcm_status_label.set_health
-        self.service_states["pcc"] = False
-
-        y += 1
-
-        self.vmc_status_label = StatusLabel("Vehicle Management")
-        restart_button = QtWidgets.QPushButton("Restart")
-        vmc_restart_message = """This will restart the vehicle management computer.
-        This will disable all autonomy for at least a minute."""
-        restart_button.clicked.connect(lambda: self.restart_service("vmc", True, vmc_restart_message))
-        states_layout.addWidget(self.vmc_status_label, y, 0)
         states_layout.addWidget(restart_button, y, 1)
-        self.service_map["vmc"] = self.vmc_status_label.set_health
-        self.service_states["vmc"] = False
+        self.service_map["pcc"] = self.pcm_status_label.set_health
+        self.pcm_status_label.set_health(True)
 
         layout.addWidget(states_groupbox)
 
         self.main_shutdown_button = QtWidgets.QPushButton("Shutdown")
-        self.main_shutdown_button.clicked.connect(
-            lambda: self.restart_service(
-                None,
-                True,
-                """This will shutdown the vehicle management computer.
-                        This means that you have to unplug it and re plug it to restart it again.""",
-                lambda: self.send_message("avr/shutdown", "", qos=2)
-            )
+        self.main_shutdown_callback = lambda: self.restart_service(
+            lambda: None,  # ToDo: Make this run 'sudo shutdown now'
+            True,
+            "Shutdown VMC",
+            "This will shutdown the vehicle management computer.\nThis is not reversible!",
         )
+        self.main_shutdown_button.clicked.connect(self.main_shutdown_callback)
 
         layout.addWidget(self.main_shutdown_button)
 
-    def set_controller_led(self, rgb: tuple[int, int, int]):
-        if self.controller is not None:
-            # self.controller.touchpad.led_color = rgb
-            pass
+    def status_callback_fcm(self, msg: dict[str, Any]) -> None:
+        arming_state = bool(msg['arming_state'])
+        nav_state = PX4VehicleStatusNavState(msg['nav_state'])
 
-    def update_controller_led(self) -> None:
-        checked_states = [
-            self.service_states.get("mavp2p", False),
-            self.service_states.get("pcc", False),
-            self.service_states.get("vmc", False)
-        ]
-        if False in checked_states:
-            self.set_controller_led((255, 0, 0))
-        elif self.autonomy_enabled and self.battery_level > 20:
-            self.set_controller_led((255, 220, 0))
-        else:
-            # noinspection PyBroadException
-            try:
-                color = BATTERY_COLORS[self.battery_level]
-                self.set_controller_led(color.rgb)
-            except Exception:
-                self.set_controller_led((100, 0, 255))
+        self.vehicle_state_signal.emit(arming_state, nav_state)
 
-    def update_service_status(self, payload: dict[str, bool]) -> None:
-        for name, state in payload.items():
-            if name in self.service_map:
-                self.service_states[name] = state
-                self.update_controller_led()
-                self.service_map[name](state)
-                if not state:
-                    if name == "mavp2p":
-                        self.send_message("avr/gui/sound/beep", {})
-                        Toast.get().send_message.emit("Mavp2p has stopped!", 2.0)
-                    elif name == "fcc":
-                        self.send_message("avr/gui/sound/beep", {})
-                        Toast.get().send_message.emit("Lost connection to the flight controller!", 2.0)
-                    elif name == "pcc":
-                        self.send_message("avr/gui/sound/beep", {})
-                        Toast.get().send_message.emit("Lost connection to the peripheral controller!", 2.0)
-                    elif name == "vmc":
-                        self.send_message("avr/gui/sound/beep", {})
-                        Toast.get().send_message.emit("The vmc is shutting down!", 2.0)
+    def battery_status_callback_fcm(self, msg: dict[str, Any]) -> None:
+        connected = msg['connected']
+        voltage = msg['voltage_filtered_v']
+        current = msg['current_filtered_a']
 
-    def restart_service(self, service: str | None, show_dialog: bool, message: str = "", callback=None) -> None:
+        self.battery_state_signal.emit(connected, voltage, current)
+
+    def pose_callback_zed(self, msg: dict[str, Any]) -> None:
+        pose = msg['pose']
+        position_dict = pose['position']
+        orientation_dict = pose['orientation']
+
+        position = position_dict['x'], position_dict['y'], position_dict['z']
+        orientation = orientation_dict['x'], orientation_dict['y'], orientation_dict['z'], orientation_dict['w']
+
+        self.pose_signal.emit(position, orientation)
+
+    def pose_state_callback_zed(self, msg: dict[str, Any]) -> None:
+        status = ZEDPositionStatus(msg['status'])
+
+        self.pose_state_signal.emit(status)
+
+    def setup_ros(self, client: roslibpy.Ros) -> None:
+        super().setup_ros(client)
+
+        self.pcc_restart_service = roslibpy.Service(
+            client,
+            '/pcc/reset',
+            'std_srvs/srv/Trigger'
+        )
+
+        self.fcm_command_publisher = roslibpy.Topic(
+            client,
+            '/fmu/in/vehicle_command',
+            'px4_msgs/msg/VehicleCommand'
+        )
+
+        self.fcm_status_subscriber = roslibpy.Topic(
+            client,
+            '/fmu/out/vehicle_status',
+            'px4_msgs/msg/VehicleStatus'
+        )
+        self.fcm_status_subscriber.subscribe(self.status_callback_fcm)
+
+        self.fcm_battery_status_subscriber = roslibpy.Topic(
+            client,
+            '/fmu/out/battery_status',
+            'px4_msgs/msg/BatteryStatus'
+        )
+        self.fcm_battery_status_subscriber.subscribe(self.battery_status_callback_fcm)
+
+        self.zed_pose_subscriber = roslibpy.Topic(
+            client,
+            '/zed/zed_node/pose',
+            'geometry_msgs/msg/PoseStamped'
+        )
+        self.zed_pose_subscriber.subscribe(self.pose_callback_zed)
+
+        self.zed_pose_state_subscriber = roslibpy.Topic(
+            client,
+            '/zed/zed_node/pose/state',
+            'zed_interfaces/msg/PosTrackStatus'
+        )
+        self.zed_pose_state_subscriber.subscribe(self.pose_state_callback_zed)
+
+    def reset_pcc(self) -> None:
+        self.pcc_restart_service.call(
+            roslibpy.ServiceRequest(),
+            lambda msg: print(f'PCC reset triggered: {msg}')
+        )
+
+    def reset_fcm(self) -> None:
+        self.fcm_command_publisher.publish(
+            {
+                'command': PX4VehicleCommand.VEHICLE_CMD_PREFLIGHT_REBOOT_SHUTDOWN,
+                'param1': float(1)
+            }
+        )
+
+    def set_global_position_fcm(self, latitude: float, longitude: float, altitude: float = 0) -> None:
+        self.fcm_command_publisher.publish(
+            {
+                'command': PX4VehicleCommand.VEHICLE_CMD_SET_GPS_GLOBAL_ORIGIN,
+                'param5': latitude,
+                'param6': longitude,
+                'param7': altitude
+            }
+        )
+
+    # ToDo: Maybe add some calibration buttons for level horizon and mag
+
+    def clear(self) -> None:
+        # status
+        self.battery_voltage_label.setText(COLORED_UNKNOWN_TEXT)
+        self.battery_current_label.setText('')
+        self.formatted_battery_signal.emit(COLORED_UNKNOWN_TEXT, '')
+
+        self.armed_label.setText(COLORED_UNKNOWN_TEXT)
+        self.formatted_armed_signal.emit(COLORED_UNKNOWN_TEXT)
+
+        self.flight_mode_label.setText(COLORED_UNKNOWN_TEXT)
+        self.formatted_mode_signal.emit(COLORED_UNKNOWN_TEXT)
+
+        # position
+        self.pos_x_line_edit.setText(UNKNOWN_TEXT)
+        self.pos_y_line_edit.setText(UNKNOWN_TEXT)
+        self.pos_z_line_edit.setText(UNKNOWN_TEXT)
+
+        self.att_r_line_edit.setText(UNKNOWN_TEXT)
+        self.att_p_line_edit.setText(UNKNOWN_TEXT)
+        self.att_y_line_edit.setText(UNKNOWN_TEXT)
+
+    @staticmethod
+    def restart_service(callback: Callable[[], None],
+                        show_dialog: bool = False, title: str = "", message: str = "") -> None:
         do_reset = True
         if show_dialog:
             if '\n' in message:
@@ -363,7 +457,7 @@ class VMCTelemetryWidget(BaseTabWidget):
                 info = None
 
             dialog = QtWidgets.QMessageBox()
-            dialog.setWindowTitle(f"Restart {service}")
+            dialog.setWindowTitle(title)
             dialog.setText(message)
             if info is not None:
                 dialog.setInformativeText(info)
@@ -374,177 +468,30 @@ class VMCTelemetryWidget(BaseTabWidget):
             if dialog.exec_() != QtWidgets.QMessageBox.Ok:
                 do_reset = False
         if do_reset:
-            if callback is None:
-                self.send_message(f"avr/status/restart/{service}", {}, qos=2)
-            else:
-                callback()
+            callback()
 
-    def clear(self) -> None:
-        # status
-        self.battery_percent_bar.setValue(0)
-        self.battery_voltage_label.setText("")
-
-        self.armed_label.setText("")
-        self.flight_mode_label.setText("")
-
-        # position
-        self.loc_x_line_edit.setText("")
-        self.loc_y_line_edit.setText("")
-        self.loc_z_line_edit.setText("")
-
-        self.loc_lat_line_edit.setText("")
-        self.loc_lon_line_edit.setText("")
-        self.loc_alt_line_edit.setText("")
-
-        self.att_r_line_edit.setText("")
-        self.att_p_line_edit.setText("")
-        self.att_y_line_edit.setText("")
-
-    def update_satellites(self, payload: AvrFcmGpsInfoPayload) -> None:
-        """
-        Update satellites information
-        """
-        self.satellites_label.setText(
-            f"{payload['num_satellites']} visible, {payload['fix_type']}"
-        )
-
-    def update_battery(self, payload: AvrFcmBatteryPayload) -> None:
-        """
-        Update battery information
-        """
-        soc = payload["soc"]
-        # prevent it from dropping below 0
-        soc = max(soc, 0)
-        # prevent it from going above 100
-        soc = min(soc, 100)
-
-        self.battery_level = soc
-        self.update_controller_led()
-
-        if soc < 20:
-            self.send_message("avr/gui/sound/battery_alert", {})
-            Toast.get().send_message.emit("Low battery!", 3.0)
-        self.battery_percent_bar.setValue(int(soc))
-        voltage = round(payload['voltage'], 4)
-        self.voltage_update.emit(voltage)
-        self.battery_voltage_label.setText(f"{voltage} Volts")
-
-        # this is required to change the progress bar color as the value changes
-        color = smear_color(
-            (135, 0, 16), (11, 135, 0), value=soc, min_value=0, max_value=100
-        )
-
-        stylesheet = f"""
-            QProgressBar {{
-                border: 1px solid grey;
-                border-radius: 0px;
-                text-align: center;
-            }}
-
-            QProgressBar::chunk {{
-                background-color: rgb{color};
-            }}
-            """
-
-        self.battery_percent_bar.setStyleSheet(stylesheet)
-
-    def update_status(self, payload: AvrFcmStatusPayload) -> None:
-        """
-        Update status information
-        """
-        self.last_armed = self.armed
-        if payload["armed"]:
-            color = "Red"
-            text = "Armed"
-            self.armed = True
+    @staticmethod
+    def format_battery_voltage(voltage: float) -> str:
+        if voltage <= FAULT_BATTERY_VOLTAGE:
+            start = f"<a style='color:{RED_COLOR};'>"
+        elif voltage <= LOW_BATTERY_VOLTAGE:
+            start = f"<a style='color:{YELLOW_COLOR};'>"
         else:
-            color = "Green"
-            text = "Disarmed"
-            self.armed = False
-        if self.armed is not self.last_armed:
-            self.armed_state.emit(self.armed)
+            start = f"<a style='color:{GREEN_COLOR};'>"
+        return f"{start}{voltage} V</a>"
 
-        armed_text = wrap_text(text, color)
-        self.armed_update.emit(armed_text)
-        self.armed_label.setText(armed_text)
-        mode_text = payload["mode"]
-        self.mode_update.emit(mode_text)
-        self.flight_mode_label.setText(mode_text)
+    @staticmethod
+    def format_battery_current(current: float) -> str:
+        return f"<a style='color:{LIGHT_BLUE_COLOR};'>{current} A</a>"
 
-    def update_local_location(self, payload: AvrFcmLocationLocalPayload) -> None:
-        """
-        Update local location information
-        """
-        self.loc_x_line_edit.setText(str(payload["dX"]))
-        self.loc_y_line_edit.setText(str(payload["dY"]))
-        self.loc_z_line_edit.setText(str(payload["dZ"]))
+    @staticmethod
+    def format_armed_text(armed: bool) -> str:
+        if armed:
+            return f"<a style='color:{YELLOW_COLOR};'>Armed</a>"
+        else:
+            return f"<a style='color:{GREEN_COLOR};'>Disarmed</a>"
 
-    def update_global_location(self, payload: AvrFcmLocationGlobalPayload) -> None:
-        """
-        Update global location information
-        """
-        self.loc_lat_line_edit.setText(str(payload["lat"]))
-        self.loc_lon_line_edit.setText(str(payload["lon"]))
-        self.loc_alt_line_edit.setText(str(payload["alt"]))
-
-    def update_euler_attitude(self, payload: AvrFcmAttitudeEulerPayload) -> None:
-        """
-        Update euler attitude information
-        """
-        self.att_r_line_edit.setText(str(payload["roll"]))
-        self.att_p_line_edit.setText(str(payload["pitch"]))
-        self.att_y_line_edit.setText(str(payload["yaw"]))
-
-    # def update_auaternion_attitude(self, payload: AvrFcmAttitudeQuaternionMessage) -> None:
-    #     """
-    #     Update euler attitude information
-    #     """
-    #     self.att_w_line_edit.setText(str(payload["w"]))
-    #     self.att_x_line_edit.setText(str(payload["x"]))
-    #     self.att_y_line_edit.setText(str(payload["y"]))
-    #     self.att_z_line_edit.setText(str(payload["z"]))
-
-    def process_message(self, topic: str, payload: str) -> None:
-        """
-        Process an incoming message and update the appropriate component
-        """
-        topic_map = {
-            "avr/fcm/gps_info": self.update_satellites,
-            "avr/fcm/battery": self.update_battery,
-            "avr/fcm/status": self.update_status,
-            "avr/fcm/location/local": self.update_local_location,
-            "avr/fcm/location/global": self.update_global_location,
-            "avr/fcm/attitude/euler": self.update_euler_attitude,
-            "avr/status/update": self.update_service_status
-        }
-
-        # discard topics we don't recognize
-        if topic in topic_map:
-            data: dict = json.loads(payload)
-            # noinspection PyArgumentList
-            topic_map[topic](data)
-
-        # for status_prefix in self.topic_status_map.keys():
-        #     if not topic.startswith(status_prefix):
-        #         continue
-        #
-        #     # set icon to healthy
-        #     status_label = self.topic_status_map[status_prefix]
-        #     status_label.set_health(True)
-        #
-        #     # reset existing timer
-        #     if status_prefix in self.topic_timer:
-        #         timer = self.topic_timer[status_prefix]
-        #         timer.stop()
-        #         timer.deleteLater()
-        #
-        #     # create a new timer
-        #     # Can't do .singleShot on an exisiting QTimer as that
-        #     # creates a new instance
-        #     timer = QtCore.QTimer()
-        #     timer.timeout.connect(lambda: status_label.set_health(False))  # type: ignore
-        #     timer.setSingleShot(True)
-        #     timer.start(2000)
-        #
-        #     self.topic_timer[status_prefix] = timer
-        #     break
+    @staticmethod
+    def format_nav_state(nav_state: PX4VehicleStatusNavState) -> str:
+        state = nav_state.name[NAV_STATE_PREFIX_LENGTH:]
+        return f"<a style='color:{LIGHT_BLUE_COLOR};'>{state}</a>"

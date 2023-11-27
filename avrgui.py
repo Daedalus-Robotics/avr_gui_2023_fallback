@@ -7,25 +7,22 @@ from threading import Thread
 
 from PySide6 import QtCore, QtGui, QtWidgets
 from loguru import logger
-from playsound import playsound
 
 from avrgui.lib.controller.pythondualsense import Dualsense, TriggerMode, find_devices, BrightnessLevel
 from avrgui.lib.enums import ConnectionState
 from avrgui.lib.qt_icon import set_icon
 from avrgui.lib.toast import Toast
 from avrgui.lib.water_drop_popup import WaterDropPopup
-# from avrgui.tabs.autonomy import AutonomyWidget
-# from avrgui.tabs.camera_view import CameraViewWidget
 from avrgui.tabs.connection.main import MainConnectionWidget
 from avrgui.tabs.heads_up import HeadsUpDisplayWidget
-from avrgui.tabs.moving_map import MovingMapWidget
 from avrgui.tabs.thermal_view_control import ThermalViewControlWidget
-# from avrgui.tabs.vmc_control import VMCControlWidget
 from avrgui.tabs.vmc_telemetry import VMCTelemetryWidget
 from avrgui.tabs.water_drop import WaterDropWidget
 
 controller = Dualsense()
 was_connected = False
+
+tabs_unlocked = False
 
 
 class TabBar(QtWidgets.QTabBar):
@@ -117,7 +114,10 @@ class MainWindow(QtWidgets.QWidget):
     controller_rb = QtCore.Signal(bool)
     controller_lt = QtCore.Signal()
     controller_rt = QtCore.Signal()
+    controller_dpad_left = QtCore.Signal()
+    controller_dpad_right = QtCore.Signal()
     controller_options = QtCore.Signal()
+    controller_share = QtCore.Signal()
     controller_ps = QtCore.Signal()
     controller_l = QtCore.Signal(tuple)
     controller_r = QtCore.Signal(tuple)
@@ -182,6 +182,10 @@ class MainWindow(QtWidgets.QWidget):
 
         self.menu_bar.addMenu(self.main_connection_widget.ros_client_connection_widget.ros_client_menu)
 
+        self.controller_share.connect(
+            self.main_connection_widget.ros_client_connection_widget.connect_slot
+        )
+
         # def toast_mqtt(topic, message) -> None:
         #     if topic == "avr/gui/toast":
         #         try:
@@ -197,6 +201,20 @@ class MainWindow(QtWidgets.QWidget):
         # )
 
         ros_client = self.main_connection_widget.ros_client_connection_widget.ros_client
+
+        def shift_left() -> None:
+            if tabs_unlocked:
+                index = (self.tabs.tab_bar.currentIndex() - 1) % self.tabs.tab_bar.count()
+                self.tabs.tab_bar.setCurrentIndex(index)
+
+        self.controller_dpad_left.connect(shift_left)
+
+        def shift_right() -> None:
+            if tabs_unlocked:
+                index = (self.tabs.tab_bar.currentIndex() + 1) % self.tabs.tab_bar.count()
+                self.tabs.tab_bar.setCurrentIndex(index)
+
+        self.controller_dpad_right.connect(shift_right)
 
         # vmc telemetry widget
 
@@ -215,15 +233,9 @@ class MainWindow(QtWidgets.QWidget):
         #             set_mic_led
         #     )
 
-        # self.controller_ps.connect(
-        #         lambda: self.vmc_telemetry_widget.restart_service(
-        #                 None,
-        #                 True,
-        #                 """This will shutdown the vehicle management computer.
-        #                 This means that you have to unplug it and re plug it to restart it again.""",
-        #                 lambda: self.vmc_telemetry_widget.send_message("avr/shutdown", "", qos=2)
-        #         )
-        # )
+        self.controller_ps.connect(
+            self.vmc_telemetry_widget.main_shutdown_callback
+        )
 
         # thermal view widget
 
@@ -245,10 +257,6 @@ class MainWindow(QtWidgets.QWidget):
 
         self.controller_rb.connect(
             self.thermal_view_control_widget.on_controller_rb
-        )
-
-        self.controller_circle.connect(
-            self.thermal_view_control_widget.on_controller_circle
         )
 
         self.controller_r_press.connect(
@@ -325,6 +333,19 @@ class MainWindow(QtWidgets.QWidget):
         #     )
         # )
 
+        self.vmc_telemetry_widget.formatted_battery_signal.connect(
+            self.heads_up_widget.telemetry_pane.formatted_battery_signal.emit
+        )
+        self.vmc_telemetry_widget.formatted_armed_signal.connect(
+            self.heads_up_widget.telemetry_pane.formatted_armed_signal.emit
+        )
+        self.vmc_telemetry_widget.formatted_mode_signal.connect(
+            self.heads_up_widget.telemetry_pane.formatted_mode_signal.emit
+        )
+        self.vmc_telemetry_widget.pose_state_signal.connect(
+            self.heads_up_widget.telemetry_pane.pose_state_signal.emit
+        )
+
         self.controller_triangle.connect(
             lambda v: self.heads_up_widget.water_pane.enable_drop() if v else None
         )
@@ -347,15 +368,6 @@ class MainWindow(QtWidgets.QWidget):
         # )
         self.thermal_view_control_widget.viewer.update_frame.connect(
             self.heads_up_widget.thermal_pane.update_frame.emit
-        )
-        self.vmc_telemetry_widget.voltage_update.connect(
-            self.heads_up_widget.telemetry_pane.update_battery.emit
-        )
-        self.vmc_telemetry_widget.armed_update.connect(
-            self.heads_up_widget.telemetry_pane.update_armed.emit
-        )
-        self.vmc_telemetry_widget.mode_update.connect(
-            self.heads_up_widget.telemetry_pane.update_mode.emit
         )
         self.controller_lt.connect(
             self.heads_up_widget.water_pane.trigger_bdu
@@ -380,6 +392,7 @@ class MainWindow(QtWidgets.QWidget):
         controller.player_led.player_num = 0
 
     def set_mqtt_connected_state(self, connection_state: ConnectionState) -> None:
+        global tabs_unlocked
         self.mqtt_connected = connection_state == ConnectionState.CONNECTED
 
         # list of widgets that are mqtt connected
@@ -396,6 +409,7 @@ class MainWindow(QtWidgets.QWidget):
             self.heads_up_widget,
         ]
 
+        tabs_unlocked = self.mqtt_connected
         # disable/enable widgets
         for widget in widgets:
             idx = self.tabs.indexOf(widget)
@@ -472,6 +486,8 @@ def main() -> None:
         controller.right_bumper.on_state.register(w.controller_rb.emit)
         controller.left_trigger.on_press.register(w.controller_lt.emit)
         controller.right_trigger.on_press.register(w.controller_rt.emit)
+        controller.dpad.left.on_press.register(w.controller_dpad_left.emit)
+        controller.dpad.right.on_press.register(w.controller_dpad_right.emit)
         controller.ps.on_press.register(w.controller_ps.emit)
         controller.left_stick.on_move.register(w.controller_l.emit)
         controller.right_stick.on_move.register(w.controller_r.emit)
@@ -481,6 +497,7 @@ def main() -> None:
         controller.right_stick.on_press.register(w.controller_r_press.emit)
         controller.mic_button.on_press.register(w.controller_mic.emit)
         controller.options.on_press.register(w.controller_options.emit)
+        controller.share.on_press.register(w.controller_share.emit)
 
     w.build()
 
@@ -605,13 +622,6 @@ def main() -> None:
 
     # run
     sys.exit(app.exec())
-
-
-def on_message(topic: str, payload: str | dict) -> None:
-    if "avr/gui/sound/" in topic:
-        filename = topic[len("avr/gui/sound/"):]
-        if os.path.isfile(f"assets/sound/{filename}.wav"):
-            playsound(f"assets/sound/{filename}.wav", block=False)
 
 
 if __name__ == "__main__":

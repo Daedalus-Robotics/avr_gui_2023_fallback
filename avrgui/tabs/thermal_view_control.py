@@ -531,25 +531,24 @@ class ThermalViewControlWidget(BaseTabWidget):
             return
         self.last_fire = ms
 
-        self.laser_trigger.call(roslibpy.ServiceRequest(),
-                                callback=lambda msg: logger.debug(
-                                    'Fire laser result: ' + msg.get('message', '')
-                                ))
+        if self.laser_trigger is not None:
+            self.laser_trigger.call(roslibpy.ServiceRequest(),
+                                    callback=lambda msg: logger.debug(
+                                        'Fire laser result: ' + msg.get('message', '')
+                                    ))
 
     def on_controller_rb(self, state: bool) -> None:
-        if state:
-            self.laser_set_loop.call(roslibpy.ServiceRequest({'data': True}),
-                                     callback=lambda msg: logger.debug(
-                                         'Set Loop result: ' + msg.get('message', '')
-                                     ))
-        else:
-            self.laser_set_loop.call(roslibpy.ServiceRequest({'data': False}),
-                                     callback=lambda msg: logger.debug(
-                                         'Set Loop result: ' + msg.get('message', '')
-                                     ))
-
-    def on_controller_circle(self, state: bool) -> None:
-        self.auto_checkbox.setChecked(state)
+        if self.laser_set_loop is not None:
+            if state:
+                self.laser_set_loop.call(roslibpy.ServiceRequest({'data': True}),
+                                         callback=lambda msg: logger.debug(
+                                             'Set Loop result: ' + msg.get('message', '')
+                                         ))
+            else:
+                self.laser_set_loop.call(roslibpy.ServiceRequest({'data': False}),
+                                         callback=lambda msg: logger.debug(
+                                             'Set Loop result: ' + msg.get('message', '')
+                                         ))
 
     def on_controller_r3(self) -> None:
         self.relative_checkbox.setChecked(not self.joystick.relative_movement)

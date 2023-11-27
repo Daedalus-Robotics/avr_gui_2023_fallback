@@ -12,6 +12,7 @@ import roslibpy.actionlib
 from PySide6 import QtCore, QtGui, QtWidgets
 from loguru import logger
 
+from .vmc_telemetry import ZEDPositionStatus
 from ..lib import utils
 from ..lib.action import Action
 from ..lib.controller.pythondualsense import Dualsense, BrightnessLevel
@@ -23,8 +24,10 @@ from ..lib.utils import constrain
 
 RED_COLOR = "red"
 LIGHT_BLUE_COLOR = "#0091ff"
+YELLOW_COLOR = "#ffb800"
 GREEN_COLOR = "#1bc700"
 TIME_COLOR = "#3f8c96"
+COLORED_UNKNOWN_TEXT = "<span style='color:orange;'>Unknown</span>"
 COLORED_NONE_TEXT = "<span style='color:orange;'>None</span>"
 STATE_LOOKUP = {
     "inactive": 0,
@@ -351,20 +354,21 @@ class WaterDropPane(QtWidgets.QWidget):
         self.set_auton_drop_mode(1)
 
     def set_auton_drop_mode(self, mode: int) -> None:
-        if self.atag_cancel_button is not None:
-            self.atag_cancel_button.setEnabled(mode != 0)
+        if self.auton_drop_client is not None:
+            if self.atag_cancel_button is not None:
+                self.atag_cancel_button.setEnabled(mode != 0)
 
-        if mode != self.current_mode:
-            if mode != 0:
-                if self.current_mode != 0:
+            if mode != self.current_mode:
+                if mode != 0:
+                    if self.current_mode != 0:
+                        self.auton_drop_client.cancel()
+                    self.controller.touchpad.led_color = (255, 150, 0) if mode == 2 else (0, 255, 0)
+                    print(self.controller.touchpad.led_color)
+                    self.auton_drop_client.send_goal({'should_drop': mode == 2})
+                else:
                     self.auton_drop_client.cancel()
-                self.controller.touchpad.led_color = (255, 150, 0) if mode == 2 else (0, 255, 0)
-                print(self.controller.touchpad.led_color)
-                self.auton_drop_client.send_goal({'should_drop': mode == 2})
-            else:
-                self.auton_drop_client.cancel()
 
-        self.current_mode = mode
+            self.current_mode = mode
 
     def auton_feedback_callback(self, msg: dict[str, Any]) -> None:
         apriltag_id = msg.get('_apriltag_id', None)
@@ -390,34 +394,37 @@ class WaterDropPane(QtWidgets.QWidget):
         self.controller.touchpad.led_color = (255, 0, 0)
 
     def trigger_bdu_full(self) -> None:
-        self.stop_auton_drop()
-        self.bdu_full_trigger.call(
-            roslibpy.ServiceRequest(),
-            callback=lambda msg: logger.debug(
-                'Bdu trigger result: ' + msg.get('message', '')
+        if self.bdu_full_trigger is not None:
+            self.stop_auton_drop()
+            self.bdu_full_trigger.call(
+                roslibpy.ServiceRequest(),
+                callback=lambda msg: logger.debug(
+                    'Bdu trigger result: ' + msg.get('message', '')
+                )
             )
-        )
-        self.log_to_file(f'Full manual drop triggered')
+            self.log_to_file(f'Full manual drop triggered')
 
     def trigger_bdu(self) -> None:
-        self.stop_auton_drop()
-        self.bdu_trigger.call(
-            roslibpy.ServiceRequest(),
-            callback=lambda msg: logger.debug(
-                'Bdu trigger m result: ' + msg.get('message', '')
+        if self.bdu_trigger is not None:
+            self.stop_auton_drop()
+            self.bdu_trigger.call(
+                roslibpy.ServiceRequest(),
+                callback=lambda msg: logger.debug(
+                    'Bdu trigger m result: ' + msg.get('message', '')
+                )
             )
-        )
-        self.log_to_file(f'Stage manual drop triggered')
+            self.log_to_file(f'Stage manual drop triggered')
 
     def reset_bdu(self) -> None:
-        self.stop_auton_drop()
-        self.bdu_reset.call(
-            roslibpy.ServiceRequest(),
-            callback=lambda msg: logger.debug(
-                'Bdu reset m result: ' + msg.get('message', '')
+        if self.bdu_reset is not None:
+            self.stop_auton_drop()
+            self.bdu_reset.call(
+                roslibpy.ServiceRequest(),
+                callback=lambda msg: logger.debug(
+                    'Bdu reset m result: ' + msg.get('message', '')
+                )
             )
-        )
-        self.log_to_file(f'Reset BDU')
+            self.log_to_file(f'Reset BDU')
 
     def setup_ros(self, client: roslibpy.Ros) -> None:
         self.detections_subscriber = roslibpy.Topic(
@@ -503,9 +510,10 @@ class GimbalPane(QtWidgets.QWidget):
 
 
 class TelemetryPane(QtWidgets.QWidget):
-    update_battery = QtCore.Signal(float)
-    update_armed = QtCore.Signal(str)
-    update_mode = QtCore.Signal(str)
+    formatted_battery_signal = QtCore.Signal(str, str)
+    formatted_armed_signal = QtCore.Signal(str)
+    formatted_mode_signal = QtCore.Signal(str)
+    pose_state_signal = QtCore.Signal(object)
 
     def __init__(self, parent: QtWidgets.QWidget) -> None:
         super(TelemetryPane, self).__init__(parent)
@@ -515,29 +523,59 @@ class TelemetryPane(QtWidgets.QWidget):
 
         telemetry_groupbox = QtWidgets.QGroupBox("Telemetry")
         telemetry_groupbox.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Policy.Minimum)
-        telemetry_layout = QtWidgets.QFormLayout()
+        telemetry_layout = QtWidgets.QGridLayout()
         telemetry_groupbox.setLayout(telemetry_layout)
         # telemetry_groupbox.setMinimumWidth(100)
 
-        self.battery_label = QtWidgets.QLabel(COLORED_NONE_TEXT)
-        self.armed_label = QtWidgets.QLabel(COLORED_NONE_TEXT)
-        self.mode_label = QtWidgets.QLabel(COLORED_NONE_TEXT)
-        telemetry_layout.addRow("Battery:", self.battery_label)
-        telemetry_layout.addRow("Armed:", self.armed_label)
-        telemetry_layout.addRow("Flight Mode:", self.mode_label)
+        # battery row
+        battery_layout = QtWidgets.QHBoxLayout()
+
+        self.battery_voltage_label = QtWidgets.QLabel(COLORED_UNKNOWN_TEXT)
+        self.battery_current_label = QtWidgets.QLabel("")
+        battery_layout.addWidget(self.battery_voltage_label)
+        battery_layout.addWidget(self.battery_current_label)
+        self.formatted_battery_signal.connect(
+            lambda voltage, _: self.battery_voltage_label.setText(voltage)
+        )
+        self.formatted_battery_signal.connect(
+            lambda _, current: self.battery_current_label.setText(current)
+        )
+
+        telemetry_layout.addWidget(QtWidgets.QLabel("Battery:"), 0, 0)
+        telemetry_layout.addLayout(battery_layout, 0, 1)
+
+        # armed row
+        self.armed_label = QtWidgets.QLabel(COLORED_UNKNOWN_TEXT)
+        telemetry_layout.addWidget(QtWidgets.QLabel("Armed Status:"), 1, 0)
+        telemetry_layout.addWidget(self.armed_label, 1, 1)
+        self.formatted_armed_signal.connect(self.armed_label.setText)
+
+        # flight mode row
+        self.mode_label = QtWidgets.QLabel(COLORED_UNKNOWN_TEXT)
+        telemetry_layout.addWidget(QtWidgets.QLabel("Flight Mode:"), 2, 0)
+        telemetry_layout.addWidget(self.mode_label, 2, 1)
+        self.formatted_mode_signal.connect(self.mode_label.setText)
+
+        # position tracking row
+        self.pose_state_label = QtWidgets.QLabel(COLORED_UNKNOWN_TEXT)
+        telemetry_layout.addWidget(QtWidgets.QLabel("Position Tracking:"), 3, 0)
+        telemetry_layout.addWidget(self.pose_state_label, 3, 1)
+        self.pose_state_signal.connect(
+            lambda state: self.pose_state_label.setText(self.format_position_tracking(state))
+        )
 
         layout.addWidget(telemetry_groupbox)
 
-        self.update_battery.connect(
-            lambda voltage: self.battery_label.setText(
-                f"<span style='color:{LIGHT_BLUE_COLOR if voltage > 14 else RED_COLOR};'>{voltage} Volts</span>"
-            )
-        )
-        self.update_armed.connect(
-            self.armed_label.setText
-        )
-        self.update_mode.connect(
-            lambda text: self.mode_label.setText(
-                f"<span style='color:{GREEN_COLOR};'>{text}</span>"
-            )
-        )
+    @staticmethod
+    def format_position_tracking(status: ZEDPositionStatus | None) -> str:
+        match status:
+            case ZEDPositionStatus.OK:
+                return f"<a style='color:{GREEN_COLOR};'>GOOD</a>"
+            case ZEDPositionStatus.SEARCHING:
+                return f"<a style='color:{YELLOW_COLOR};'>SEARCHING</a>"
+            case ZEDPositionStatus.SEARCHING_FLOOR_PLANE:
+                return f"<a style='color:{YELLOW_COLOR};'>SEARCHING</a>"
+            case None:
+                return COLORED_UNKNOWN_TEXT
+            case _:
+                return f"<a style='color:{RED_COLOR};'>ERROR</a>"
