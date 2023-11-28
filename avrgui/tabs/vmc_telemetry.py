@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import time
 from enum import Enum
+from threading import Thread
 from typing import Callable, Any
 
 import colour
@@ -127,6 +129,7 @@ class VMCTelemetryWidget(BaseTabWidget):
         self.setWindowTitle("VMC Telemetry")
 
         self.pcc_restart_service: roslibpy.Service | None = None
+        self.pcc_servo_enable_service: roslibpy.Service | None = None
         self.fcm_command_publisher: roslibpy.Topic | None = None
         self.fcm_status_subscriber: roslibpy.Topic | None = None
         self.fcm_battery_status_subscriber: roslibpy.Topic | None = None
@@ -363,6 +366,12 @@ class VMCTelemetryWidget(BaseTabWidget):
             'std_srvs/srv/Trigger'
         )
 
+        self.pcc_servo_enable_service = roslibpy.Service(
+            client,
+            '/servo/enable',
+            'std_srvs/srv/SetBool'
+        )
+
         self.fcm_command_publisher = roslibpy.Topic(
             client,
             '/fmu/in/vehicle_command',
@@ -401,6 +410,14 @@ class VMCTelemetryWidget(BaseTabWidget):
         self.pcc_restart_service.call(
             roslibpy.ServiceRequest(),
             lambda msg: print(f'PCC reset triggered: {msg}')
+        )
+        Thread(target=self.enable_servos_pcc, daemon=True).start()
+
+    def enable_servos_pcc(self) -> None:
+        time.sleep(5)
+        self.pcc_servo_enable_service.call(
+            roslibpy.ServiceRequest({'data': True}),
+            lambda msg: print(f'PCC servos enabled: {msg}')
         )
 
     def reset_fcm(self) -> None:
