@@ -74,7 +74,8 @@ class RosBridgeClient(QtCore.QObject):
         logger.info("Disconnecting from SocketIO server")
         self.connection_state.emit(ConnectionState.DISCONNECTING)
 
-        self.client.close()
+        if self.client is not None:
+            self.client.close()
 
         logger.info("Disconnected from SocketIO server")
         self.connection_state.emit(ConnectionState.DISCONNECTED)
