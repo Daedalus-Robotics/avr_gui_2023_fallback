@@ -111,9 +111,9 @@ class MainWindow(QtWidgets.QWidget):
     controller_triangle = QtCore.Signal(bool)
     controller_square = QtCore.Signal(bool)
     controller_lb = QtCore.Signal()
-    controller_rb = QtCore.Signal(bool)
+    controller_rb = QtCore.Signal()
     controller_lt = QtCore.Signal()
-    controller_rt = QtCore.Signal()
+    controller_rt = QtCore.Signal(bool)
     controller_dpad_left = QtCore.Signal()
     controller_dpad_right = QtCore.Signal()
     controller_options = QtCore.Signal()
@@ -370,10 +370,14 @@ class MainWindow(QtWidgets.QWidget):
             self.heads_up_widget.thermal_pane.update_frame.emit
         )
         self.controller_lt.connect(
-            self.heads_up_widget.water_pane.trigger_bdu
+            self.heads_up_widget.water_pane.trigger_bdu_full
         )
         self.controller_lb.connect(
-            self.heads_up_widget.water_pane.trigger_bdu_full
+            self.heads_up_widget.water_pane.trigger_bdu
+        )
+
+        self.controller_options.connect(
+            self.heads_up_widget.water_pane.toggle_use_full_drops
         )
 
         # set initial state
@@ -483,9 +487,9 @@ def main() -> None:
         controller.triangle.on_state.register(w.controller_triangle.emit)
         controller.square.on_state.register(w.controller_square.emit)
         controller.left_bumper.on_press.register(w.controller_lb.emit)
-        controller.right_bumper.on_state.register(w.controller_rb.emit)
+        controller.right_bumper.on_press.register(w.controller_rb.emit)
         controller.left_trigger.on_press.register(w.controller_lt.emit)
-        controller.right_trigger.on_press.register(w.controller_rt.emit)
+        controller.right_trigger.on_state.register(w.controller_rt.emit)
         controller.dpad.left.on_press.register(w.controller_dpad_left.emit)
         controller.dpad.right.on_press.register(w.controller_dpad_right.emit)
         controller.ps.on_press.register(w.controller_ps.emit)

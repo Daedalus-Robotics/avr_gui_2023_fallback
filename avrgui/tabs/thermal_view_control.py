@@ -522,20 +522,7 @@ class ThermalViewControlWidget(BaseTabWidget):
             map_value(y, -130, 130, 0, 200)
         )
 
-    def on_controller_rt(self) -> None:
-        ms = int(round(time.time() * 1000))
-        timesince = ms - self.last_fire
-        if timesince < 100:
-            return
-        self.last_fire = ms
-
-        if self.laser_trigger is not None:
-            self.laser_trigger.call(roslibpy.ServiceRequest(),
-                                    callback=lambda msg: logger.debug(
-                                        'Fire laser result: ' + msg.get('message', '')
-                                    ))
-
-    def on_controller_rb(self, state: bool) -> None:
+    def on_controller_rt(self, state: bool) -> None:
         if self.laser_set_loop is not None:
             if state:
                 self.laser_set_loop.call(roslibpy.ServiceRequest({'data': True}),
@@ -547,6 +534,19 @@ class ThermalViewControlWidget(BaseTabWidget):
                                          callback=lambda msg: logger.debug(
                                              'Set Loop result: ' + msg.get('message', '')
                                          ))
+
+    def on_controller_rb(self) -> None:
+        ms = int(round(time.time() * 1000))
+        timesince = ms - self.last_fire
+        if timesince < 100:
+            return
+        self.last_fire = ms
+
+        if self.laser_trigger is not None:
+            self.laser_trigger.call(roslibpy.ServiceRequest(),
+                                    callback=lambda msg: logger.debug(
+                                        'Fire laser result: ' + msg.get('message', '')
+                                    ))
 
     def on_controller_r3(self) -> None:
         self.relative_checkbox.setChecked(not self.joystick.relative_movement)

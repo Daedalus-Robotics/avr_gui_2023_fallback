@@ -283,6 +283,11 @@ class WaterDropPane(QtWidgets.QWidget):
         )
         water_drop_layout.addRow("Visible Tags:", self.tags_label)
 
+        self.full_drops_label = QtWidgets.QLabel(
+            f"{self.format_use_full_drops(False)}"
+        )
+        water_drop_layout.addRow("Using full drops:", self.full_drops_label)
+
         self.open_log_button = QtWidgets.QPushButton("Open log")
         self.open_log_button.clicked.connect(self.start_log_file)
         water_drop_layout.addWidget(self.open_log_button)
@@ -300,9 +305,12 @@ class WaterDropPane(QtWidgets.QWidget):
         self.bdu_full_trigger: roslibpy.Service | None = None
         self.bdu_trigger: roslibpy.Service | None = None
         self.bdu_reset: roslibpy.Service | None = None
+        self.auton_use_full_drop_client: roslibpy.Service | None = None
         self.auton_drop_client: Action | None = None
 
         self.current_mode = 0
+
+        self.use_full_drops = False
 
         if not os.path.isdir('log'):
             os.mkdir('log')
@@ -314,6 +322,14 @@ class WaterDropPane(QtWidgets.QWidget):
         self.controller.mic_button.led_state = False
         self.controller.mic_button.led_pulsating = True
         self.controller.mic_button.led_brightness = BrightnessLevel.HIGH
+
+    def toggle_use_full_drops(self) -> None:
+        self.use_full_drops = not self.use_full_drops
+        self.full_drops_label.setText(self.format_use_full_drops(self.use_full_drops))
+        self.auton_use_full_drop_client.call(
+            roslibpy.ServiceRequest({'data': self.use_full_drops}),
+            callback=lambda msg: print(f'Use full drops response: {msg}')
+        )
 
     def start_log_file(self) -> None:
         self.open_log_button.setEnabled(False)
@@ -449,6 +465,11 @@ class WaterDropPane(QtWidgets.QWidget):
             '/bdu/reset',
             'std_srvs/srv/Trigger'
         )
+        self.auton_use_full_drop_client = roslibpy.Service(
+            client,
+            '/auton_drop/use_full_drop',
+            'std_srvs/srv/SetBool'
+        )
 
         self.auton_drop_client = Action(
             client,
@@ -463,6 +484,13 @@ class WaterDropPane(QtWidgets.QWidget):
             Toast.get().send_message.emit(f'Log timer starting in {countdown} seconds...', 1.5)
             time.sleep(1)
         Toast.get().send_message.emit(f'Log timer started', 2)
+
+    @staticmethod
+    def format_use_full_drops(use_full_drops: bool) -> str:
+        if use_full_drops:
+            return f"<a style='color:{GREEN_COLOR};'>True</a>"
+        else:
+            return f"<a style='color:{YELLOW_COLOR};'>False</a>"
 
     @staticmethod
     def format_visible_tags(tags: list[int]) -> str:
