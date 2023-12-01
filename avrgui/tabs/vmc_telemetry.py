@@ -17,6 +17,7 @@ from bell.avr.mqtt.payloads import (
     AvrFcmLocationLocalPayload,
     AvrFcmStatusPayload,
 )
+from qmaterialwidgets import FilledPushButton, TonalPushButton, InfoBadge, InfoBarIcon
 
 from .base import BaseTabWidget
 from .connection.rosbridge import RosBridgeClient
@@ -97,7 +98,7 @@ class VMCTelemetryWidget(BaseTabWidget):
     formatted_mode_signal = QtCore.Signal(str)
 
     def __init__(self, parent: QtWidgets.QWidget, client: RosBridgeClient, controller) -> None:
-        super().__init__(parent, client)
+        super().__init__(parent, client, 'vmc_telemetry')
 
         self.controller = controller
 
@@ -135,6 +136,8 @@ class VMCTelemetryWidget(BaseTabWidget):
         self.fcm_battery_status_subscriber: roslibpy.Topic | None = None
         self.zed_pose_subscriber: roslibpy.Topic | None = None
         self.zed_pose_state_subscriber: roslibpy.Topic | None = None
+
+        self.zed_state_cleared_recently = False
 
     def build(self) -> None:
         """
@@ -266,16 +269,30 @@ class VMCTelemetryWidget(BaseTabWidget):
         y = 0
 
         self.zed_tracking_status_label = StatusLabel("ZED Tracking")
+        restart_button = FilledPushButton("Restart", self)
+        opacity_effect = QtWidgets.QGraphicsOpacityEffect(restart_button)
+        opacity_effect.setOpacity(0)
+        restart_button.setGraphicsEffect(opacity_effect)
         states_layout.addWidget(self.zed_tracking_status_label, y, 0)
+        states_layout.addWidget(restart_button, y, 1)
         self.service_map["zed_tracking"] = self.zed_tracking_status_label.set_health
         self.pose_state_signal.connect(
             lambda state: self.zed_tracking_status_label.set_health(state == ZEDPositionStatus.OK)
         )
 
+        def send_toast_on_init_tracking(state: bool) -> None:
+            if state and self.zed_state_cleared_recently:
+                Toast.get().show_message('ZED', 'Tracking aligned', InfoBarIcon.SUCCESS, 2)
+                self.zed_state_cleared_recently = False
+
+        self.pose_state_signal.connect(
+            lambda state: send_toast_on_init_tracking(state == ZEDPositionStatus.OK)
+        )
+
         y += 1
 
         self.vmc_service_status_label = StatusLabel("ROS2 Launch File")
-        restart_button = QtWidgets.QPushButton("Restart")
+        restart_button = FilledPushButton("Restart", self)
         restart_button.clicked.connect(lambda: self.restart_service(
             lambda: None  # ToDo: Make this run 'sudo systemctl restart vmc'
         ))
@@ -287,7 +304,7 @@ class VMCTelemetryWidget(BaseTabWidget):
         y += 1
 
         self.fcm_status_label = StatusLabel("Flight Controller")
-        restart_button = QtWidgets.QPushButton("Restart")
+        restart_button = FilledPushButton("Restart", self)
         restart_button.clicked.connect(lambda: self.restart_service(
             self.reset_fcm,
             True,
@@ -304,7 +321,7 @@ class VMCTelemetryWidget(BaseTabWidget):
         y += 1
 
         self.pcm_status_label = StatusLabel("Peripheral Controller")
-        restart_button = QtWidgets.QPushButton("Restart")
+        restart_button = FilledPushButton("Restart", self)
         restart_button.clicked.connect(lambda: self.restart_service(
             self.reset_pcc,
             True,
@@ -318,7 +335,7 @@ class VMCTelemetryWidget(BaseTabWidget):
 
         layout.addWidget(states_groupbox)
 
-        self.main_shutdown_button = QtWidgets.QPushButton("Shutdown")
+        self.main_shutdown_button = TonalPushButton("Shutdown", self)
         self.main_shutdown_callback = lambda: self.restart_service(
             lambda: None,  # ToDo: Make this run 'sudo shutdown now'
             True,
@@ -463,6 +480,8 @@ class VMCTelemetryWidget(BaseTabWidget):
         self.att_r_line_edit.setText(UNKNOWN_TEXT)
         self.att_p_line_edit.setText(UNKNOWN_TEXT)
         self.att_y_line_edit.setText(UNKNOWN_TEXT)
+
+        self.zed_state_cleared_recently = True
 
     def restart_service(self, callback: Callable[[], None],
                         show_dialog: bool = False, title: str = "", message: str = "") -> None:

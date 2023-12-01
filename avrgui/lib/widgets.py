@@ -2,12 +2,11 @@ import contextlib
 import os
 from typing import Optional
 
-from PySide6 import QtGui, QtWidgets
+from PySide6 import QtGui, QtWidgets, QtCore
+from qmaterialwidgets import FilledLineEdit
 
-from .qt_icon import IMG_DIR
 
-
-class IntLineEdit(QtWidgets.QLineEdit):
+class IntLineEdit(FilledLineEdit):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.setValidator(QtGui.QIntValidator(0, 1000000, self))
@@ -19,15 +18,21 @@ class DoubleLineEdit(QtWidgets.QLineEdit):
         self.setValidator(QtGui.QDoubleValidator(0.0, 100.0, 2, self))
 
 
-class DisplayLineEdit(QtWidgets.QLineEdit):
-    def __init__(self, *args, round_digits: Optional[int] = 4, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+class DisplayLineEdit(FilledLineEdit):
+    def __init__(self, parent: Optional[QtWidgets.QWidget] = None,
+                 round_digits: Optional[int] = 4) -> None:
+        super().__init__()
 
         self.round_digits = round_digits
 
         self.setReadOnly(True)
+        self.setEnabled(False)
+
+        font = self.font()
+        font.setPixelSize(12)
+        self.setFont(font)
         # self.setStyleSheet("background-color: rgb(220, 220, 220)")
-        self.setMaximumWidth(100)
+        self.setMaximumWidth(120)
 
     def setText(self, arg__1: str) -> None:
         # round incoming float values
@@ -43,6 +48,11 @@ class StatusLabel(QtWidgets.QWidget):
     def __init__(self, text: str):
         super().__init__()
 
+        size = 25
+
+        self.green_pixmap = QtGui.QPixmap("assets/img/green.png").scaledToWidth(size)
+        self.red_pixmap = QtGui.QPixmap("assets/img/red.png").scaledToWidth(size)
+
         # create a horizontal layout
         layout = QtWidgets.QHBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
@@ -50,7 +60,7 @@ class StatusLabel(QtWidgets.QWidget):
 
         # create a label for the icon
         self.icon = QtWidgets.QLabel()
-        self.icon.setFixedWidth(20)
+        self.icon.setFixedSize(QtCore.QSize(size, size))
         layout.addWidget(self.icon)
         self.set_health(False)
 
@@ -61,7 +71,4 @@ class StatusLabel(QtWidgets.QWidget):
         """
         Set the health state of the status label
         """
-        if healthy:
-            self.icon.setPixmap(QtGui.QPixmap(os.path.join(IMG_DIR, "green.png")))
-        else:
-            self.icon.setPixmap(QtGui.QPixmap(os.path.join(IMG_DIR, "red.png")))
+        self.icon.setPixmap(self.green_pixmap if healthy else self.red_pixmap)

@@ -355,7 +355,7 @@ class JoystickWidget(BaseTabWidget):
 
 class ThermalViewControlWidget(BaseTabWidget):
     def __init__(self, parent: QtWidgets.QWidget, client: RosBridgeClient) -> None:
-        super().__init__(parent, client)
+        super().__init__(parent, client, 'thermal_view')
 
         self.relative_checkbox = None
         self.auto_checkbox = None

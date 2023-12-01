@@ -17,7 +17,7 @@ def map_value(
 
 class WaterDropWidget(BaseTabWidget):
     def __init__(self, parent: QtWidgets.QWidget, ros_client: RosBridgeClient) -> None:
-        super().__init__(parent, ros_client)
+        super().__init__(parent, ros_client, 'water_drop')
 
         self.last_time = 0
         # self.position_slider: QtWidgets.QSlider | None = None
@@ -79,11 +79,6 @@ class WaterDropWidget(BaseTabWidget):
         self.trigger_button = QtWidgets.QPushButton("Trigger")
         self.trigger_button.clicked.connect(self.trigger_bpu)
         controls_layout.addWidget(self.trigger_button)
-
-        self.controller_enabled_checkbox = QtWidgets.QCheckBox("Enable Controller")
-        self.controller_enabled_checkbox.stateChanged.connect(
-                self.set_controller
-        )
         controls_layout.addWidget(self.controller_enabled_checkbox)
 
         layout.addWidget(controls_groupbox, 0, 1, 0, 1)  # These cords don't make any sense to me, but they work
@@ -110,12 +105,6 @@ class WaterDropWidget(BaseTabWidget):
     def set_controller(self, state: bool) -> None:
         self.controller_enabled = state
         # self.position_slider.setEnabled(not state)
-
-    def process_message(self, topic: str, payload: str) -> None:
-        pass
-
-    def clear(self) -> None:
-        pass
 
     def trigger_bpu(self) -> None:
         self.bdu_trigger.call(

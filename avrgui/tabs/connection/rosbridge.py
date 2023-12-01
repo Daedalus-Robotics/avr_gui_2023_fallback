@@ -1,7 +1,10 @@
 from typing import Any
+from threading import Thread
+
 import roslibpy
 from PySide6 import QtCore, QtGui, QtWidgets
 from loguru import logger
+from qmaterialwidgets import FilledPushButton, palette, MaterialStyleSheet, Theme, FilledLineEdit, InfoBarIcon
 
 from ...lib.color import wrap_text
 from ...lib.config import config
@@ -22,23 +25,26 @@ class RosBridgeClient(QtCore.QObject):
 
     def on_disconnect(self) -> None:
         """
-        Callback when the SocketIO client disconnects
+        Callback when the Rosbridge client disconnects
         """
-        logger.debug("Disconnected from SocketIO server")
+        logger.debug("Disconnected from Rosbridge server")
         self.connection_state.emit(ConnectionState.DISCONNECTED)
         if self.wanted_state is True:
-            Toast.get().send_message.emit("Lost connection to ROS bridge!", 3.0)
+            Toast.get().send_message.emit('Connection', "Lost connection to Rosbridge!", InfoBarIcon.ERROR, 3.0)
 
     def login(self, host: str, port: int) -> None:
         """
-        Connect the SocketIO client to the server. This method cannot be named "connect"
+        Connect the Rosbridge client to the server. This method cannot be named "connect"
         as this conflicts with the connect methods of the Signals
         """
+        Thread(target=lambda: self._login_thread(host, port), daemon=True).start()
+
+    def _login_thread(self, host: str, port: int) -> None:
         # do nothing on empty string
         if not host:
             return
 
-        logger.info(f"Connecting to SocketIO server at {host}:{port}")
+        logger.info(f"Connecting to Rosbridge server at {host}:{port}")
         self.connection_state.emit(ConnectionState.CONNECTING)
 
         try:
@@ -57,27 +63,27 @@ class RosBridgeClient(QtCore.QObject):
 
         except Exception as e:
             print(e)
-            logger.exception("Connection failed to SocketIO server")
+            logger.exception("Connection failed to Rosbridge server")
             self.connection_state.emit(ConnectionState.FAILURE)
 
     def _connected(self) -> None:
-        logger.success(f"Connected to SocketIO server {self.client.is_connected}")
+        logger.success(f"Connected to Rosbridge server {self.client.is_connected}")
         self.connection_state.emit(ConnectionState.CONNECTED)
         self.ros_connection.emit(self.client)
         self.wanted_state = True
 
     def logout(self) -> None:
         """
-        Disconnect the SocketIO client to the server.
+        Disconnect the Rosbridge client to the server.
         """
         self.wanted_state = False
-        logger.info("Disconnecting from SocketIO server")
+        logger.info("Disconnecting from Rosbridge server")
         self.connection_state.emit(ConnectionState.DISCONNECTING)
 
         if self.client is not None:
             self.client.close()
 
-        logger.info("Disconnected from SocketIO server")
+        logger.info("Disconnected from Rosbridge server")
         self.connection_state.emit(ConnectionState.DISCONNECTED)
 
 
@@ -109,7 +115,7 @@ class RosConnectionWidget(QtWidgets.QWidget):
         # lay out the host label and line edit
         host_layout = QtWidgets.QFormLayout()
 
-        self.hostname_line_edit = QtWidgets.QLineEdit()
+        self.hostname_line_edit = FilledLineEdit()
         host_layout.addRow(QtWidgets.QLabel("Host:"), self.hostname_line_edit)
 
         self.port_line_edit = IntLineEdit()
@@ -123,10 +129,11 @@ class RosConnectionWidget(QtWidgets.QWidget):
         bottom_layout.addWidget(self.state_label)
 
         button_layout = QtWidgets.QHBoxLayout()
-        self.connect_button = QtWidgets.QPushButton("Connect")
+        self.connect_button = FilledPushButton("Connect", self)
         button_layout.addWidget(self.connect_button)
 
-        self.disconnect_button = QtWidgets.QPushButton("Disconnect")
+        self.disconnect_button = FilledPushButton("Disconnect", self)
+        self.disconnect_button.setBackgroundColor(palette.error)
         button_layout.addWidget(self.disconnect_button)
 
         bottom_layout.addLayout(button_layout)
@@ -200,7 +207,7 @@ class RosConnectionWidget(QtWidgets.QWidget):
 
     def set_connected_state(self, connection_state: ConnectionState) -> None:
         """
-        Set the connected state of the SocketIO connection widget elements.
+        Set the connected state of the Rosbridge connection widget elements.
         """
         color_lookup = {
             ConnectionState.CONNECTED: "Green",
@@ -223,8 +230,8 @@ class RosConnectionWidget(QtWidgets.QWidget):
         self.disconnect_button.setEnabled(connected)
         self.connect_button.setDisabled(connected)
 
-        self.hostname_line_edit.setReadOnly(not disconnected)
-        self.port_line_edit.setReadOnly(not disconnected)
+        self.hostname_line_edit.setEnabled(disconnected)
+        self.port_line_edit.setEnabled(disconnected)
 
         self.connection_state.emit(connection_state)
         QtGui.QGuiApplication.processEvents()

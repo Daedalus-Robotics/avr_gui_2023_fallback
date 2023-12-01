@@ -1,26 +1,29 @@
 import datetime
 import json
+import math
 import os.path
 import time
 from threading import Thread
-from typing import Any, TextIO
+from typing import Any, TextIO, List
 
 import colour
 import numpy as np
 import roslibpy
 import roslibpy.actionlib
+import scipy
 from PySide6 import QtCore, QtGui, QtWidgets
 from loguru import logger
+from qmaterialwidgets import (OutlinedCardWidget, ElevatedCardWidget, InfoBarIcon, FilledPushButton,
+                              RadioButton, TonalToolButton, FluentIcon, InputChip, MaterialStyleSheet, SwitchButton)
 
 from .vmc_telemetry import ZEDPositionStatus
-from ..lib import utils
 from ..lib.action import Action
 from ..lib.controller.pythondualsense import Dualsense, BrightnessLevel
 from ..lib.graphics_label import GraphicsLabel
 from .base import BaseTabWidget
 from .connection.rosbridge import RosBridgeClient
 from ..lib.toast import Toast
-from ..lib.utils import constrain
+from ..lib.utils import constrain, map_value
 
 RED_COLOR = "red"
 LIGHT_BLUE_COLOR = "#0091ff"
@@ -38,10 +41,12 @@ STATE_LOOKUP = {
 
 class HeadsUpDisplayWidget(BaseTabWidget):
     def __init__(self, parent: QtWidgets.QWidget, client: RosBridgeClient, controller) -> None:
-        super().__init__(parent, client)
+        super().__init__(parent, client, 'heads_up_display')
         self.controller = controller
 
         self.setWindowTitle("HUD")
+
+        self.camera_groupbox = None
 
         self.zed_pane: ZEDCameraPane | None = None
         self.thermal_pane: ThermalCameraPane | None = None
@@ -53,26 +58,33 @@ class HeadsUpDisplayWidget(BaseTabWidget):
         layout = QtWidgets.QGridLayout()
         self.setLayout(layout)
 
-        camera_groupbox = QtWidgets.QGroupBox("Camera")
-        camera_groupbox.setSizePolicy(QtWidgets.QSizePolicy.MinimumExpanding, QtWidgets.QSizePolicy.Expanding)
-        camera_layout = QtWidgets.QVBoxLayout()
-        camera_groupbox.setLayout(camera_layout)
-        camera_groupbox.setFixedWidth(500)
+        self.camera_groupbox = ElevatedCardWidget()
+        self.camera_groupbox.setSizePolicy(QtWidgets.QSizePolicy.MinimumExpanding, QtWidgets.QSizePolicy.Expanding)
+        camera_layout = QtWidgets.QGridLayout()
+        self.camera_groupbox.setLayout(camera_layout)
+        self.camera_groupbox.setFixedWidth(self.width() // 3)
 
         # self.zed_pane = ZEDCameraPane(self)
         # camera_layout.addWidget(self.zed_pane)
         self.thermal_pane = ThermalCameraPane(self)
-        camera_layout.addWidget(self.thermal_pane)
+        camera_layout.addWidget(self.thermal_pane, 0, 0, QtCore.Qt.AlignmentFlag.AlignHCenter)
 
-        layout.addWidget(camera_groupbox, 0, 0)
+        # camera_layout.addWidget(QtWidgets.QWidget(), 1, 0, QtCore.Qt.AlignmentFlag.AlignHCenter)
 
-        control_groupbox = QtWidgets.QGroupBox("Control")
+        layout.addWidget(self.camera_groupbox, 0, 0)
+
+        control_groupbox = ElevatedCardWidget()
         control_groupbox.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
         control_layout = QtWidgets.QVBoxLayout()
         control_groupbox.setLayout(control_layout)
 
+        control_layout.setSpacing(100)
+
         self.water_pane = WaterDropPane(self, self.controller)
         control_layout.addWidget(self.water_pane)
+
+        self.laser_pane = LaserPane(self)
+        control_layout.addWidget(self.laser_pane)
 
         # self.gimbal_pane = GimbalPane(self)
         # control_layout.addWidget(self.gimbal_pane)
@@ -82,17 +94,19 @@ class HeadsUpDisplayWidget(BaseTabWidget):
 
         layout.addWidget(control_groupbox, 0, 1)
 
-    def process_message(self, topic: str, payload: str) -> None:
-        self.water_pane.process_message(topic, payload)
-        self.gimbal_pane.process_message(topic, payload)
-
     def clear(self) -> None:
         pass
 
     def setup_ros(self, client: roslibpy.Ros) -> None:
         super().setup_ros(client)
 
+        self.thermal_pane.setup_ros(client)
         self.water_pane.setup_ros(client)
+        self.laser_pane.setup_ros(client)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self.camera_groupbox.setFixedWidth((self.width() // 5) * 2)
 
 
 class ZEDCameraPane(QtWidgets.QWidget):
@@ -128,11 +142,13 @@ class ZEDCameraPane(QtWidgets.QWidget):
         self.update_frame.connect(self.view.setPixmap)
 
 
-class ThermalCameraPane(QtWidgets.QWidget):
+class ThermalCameraPane(OutlinedCardWidget):
     update_frame = QtCore.Signal(np.ndarray)
 
     def __init__(self, parent: QtWidgets.QWidget) -> None:
         super().__init__(parent)
+
+        self.thermal_raw: roslibpy.Topic | None = None
 
         # canvas size
         self.width_ = 300
@@ -146,55 +162,96 @@ class ThermalCameraPane(QtWidgets.QWidget):
         self.pixel_height = self.height_ / self.pixels_y
 
         # low range of the sensor (this will be blue on the screen)
-        self.MINTEMP = 20.0
+        self.MIN_TEMP = 20.0
 
         # high range of the sensor (this will be red on the screen)
-        self.MAXTEMP = 32.0
+        self.MAX_TEMP = 32.0
 
         # last lowest temp from camera
         self.last_lowest_temp = 999.0
 
         # how many color values we can have
-        self.COLORDEPTH = 1024
+        self.COLOR_DEPTH = 1024
 
         # how many pixels the camera is
         self.camera_x = 8
         self.camera_y = self.camera_x
         self.camera_total = self.camera_x * self.camera_y
 
+        # create list of x/y points
+        self.points = [
+            (math.floor(ix / self.camera_x), (ix % self.camera_y))
+            for ix in range(self.camera_total)
+        ]
+        # I'm not fully sure what this does
+        self.grid_x, self.grid_y = np.mgrid[
+                                   0: self.camera_x - 1: self.camera_total / 2j,
+                                   0: self.camera_y - 1: self.camera_total / 2j,
+                                   ]
+
+        # create available colors
         self.colors = [
             (int(c.red * 255), int(c.green * 255), int(c.blue * 255))
             for c in list(
-                colour.Color("indigo").range_to(colour.Color("red"), self.COLORDEPTH)
+                colour.Color("indigo").range_to(colour.Color("red"), self.COLOR_DEPTH)
             )
         ]
 
-        self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
-
+        # create canvas
         layout = QtWidgets.QVBoxLayout()
         self.setLayout(layout)
 
-        thermal_groupbox = QtWidgets.QGroupBox("Thermal")
-        thermal_groupbox.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
-        # zed_groupbox.setMaximumWidth()
-        thermal_layout = QtWidgets.QVBoxLayout()
-        thermal_groupbox.setLayout(thermal_layout)
-
-        # self.view = GraphicsLabel((1, 1))
-        # self.view.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
-        # self.view.sizePolicy().setHeightForWidth(True)
-        # self.view.setPixmap(QtGui.QPixmap("assets/blank_square.png"))
-        # self.view.setMinimumSize(200, 200)
         self.canvas = QtWidgets.QGraphicsScene()
         self.view = QtWidgets.QGraphicsView(self.canvas)
-        self.view.setGeometry(0, 0, 400, 400)
-        thermal_layout.addWidget(self.view)
+        self.view.setGeometry(0, 0, self.width_, self.height_)
+        # self.view = GraphicsLabel((1, 1))
+        # self.view.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.MinimumExpanding)
+        # self.view.sizePolicy().setHeightForWidth(True)
+        # self.view.setPixmap(QtGui.QPixmap("assets/blank_square.png"))
 
-        layout.addWidget(thermal_groupbox)
+        layout.addWidget(self.view)
 
-        self.update_frame.connect(self.update_frame_callback)
+        # need a bit of padding for the edges of the canvas
+        self.setFixedSize(self.width_ + 50, self.height_ + 50)
 
-    def update_frame_callback(self, frame: np.ndarray) -> None:
+        self.update_frame.connect(self.update_canvas_2)
+
+    def set_temp_range(self, min_temp: float, max_temp: float) -> None:
+        self.MIN_TEMP = min_temp
+        self.MAX_TEMP = max_temp
+
+    def set_calibrated_temp_range(self) -> None:
+        self.MIN_TEMP = self.last_lowest_temp + 0.0
+        self.MAX_TEMP = self.last_lowest_temp + 15.0
+
+    def check_size(self, height, width) -> None:
+        if not height == self.pixels_y or not width == self.pixels_x:
+            self.pixels_y = height
+            self.pixels_x = width
+
+            self.pixel_width = self.width_ / self.pixels_x
+            self.pixel_height = self.height_ / self.pixels_y
+
+    def update_canvas(self, pixels: List[float]) -> None:
+        float_pixels = [
+            map_value(p, self.MIN_TEMP, self.MAX_TEMP, 0, self.COLOR_DEPTH - 1)
+            for p in pixels
+        ]
+
+        float_pixels_matrix = np.reshape(float_pixels, (self.camera_x, self.camera_y))
+        rotated_float_pixels = np.rot90(np.rot90(float_pixels_matrix))
+        rotated_float_pixels = rotated_float_pixels.flatten()
+
+        bicubic = scipy.interpolate.griddata(
+            self.points,
+            rotated_float_pixels,
+            (self.grid_x, self.grid_y),
+            method="cubic",
+        )
+
+        self.update_frame.emit(bicubic)
+
+    def update_canvas_2(self, frame: np.ndarray):
         pen = QtGui.QPen(QtCore.Qt.PenStyle.NoPen)
         self.canvas.clear()
 
@@ -202,7 +259,7 @@ class ThermalCameraPane(QtWidgets.QWidget):
             for jx, pixel in enumerate(row):
                 brush = QtGui.QBrush(
                     QtGui.QColor(
-                        *self.colors[int(constrain(pixel, 0, self.COLORDEPTH - 1))]
+                        *self.colors[int(constrain(pixel, 0, self.COLOR_DEPTH - 1))]
                     )
                 )
                 self.canvas.addRect(
@@ -214,15 +271,24 @@ class ThermalCameraPane(QtWidgets.QWidget):
                     brush,
                 )
 
+    def setup_ros(self, client: roslibpy.Ros) -> None:
+        self.thermal_raw = roslibpy.Topic(
+            client,
+            '/thermal/raw',
+            'avr_pcc_2023_interfaces/msg/ThermalFrame'
+        )
 
-class WaterDropPane(QtWidgets.QWidget):
+        self.thermal_raw.subscribe(lambda msg: self.update_canvas(msg['data']))
+
+
+class WaterDropPane(OutlinedCardWidget):
     move_dropper = QtCore.Signal(int)
     auto_done = QtCore.Signal()
 
     def __init__(self, parent: QtWidgets.QWidget, controller: Dualsense) -> None:
         super().__init__(parent)
         self.controller = controller
-        self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.MinimumExpanding)
+        self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
 
         self.enabled_atag = False
         self.enabled_atag_drop = False
@@ -232,39 +298,54 @@ class WaterDropPane(QtWidgets.QWidget):
 
         layout = QtWidgets.QVBoxLayout()
         self.setLayout(layout)
-        layout.setAlignment(QtCore.Qt.AlignmentFlag.AlignTop)
+        layout.setAlignment(QtCore.Qt.AlignmentFlag.AlignVCenter)
 
-        water_drop_groupbox = QtWidgets.QGroupBox("Water Drop")
+        self.title = QtWidgets.QLabel('Water Drop')
+        font = self.font()
+        font.setPixelSize(15)
+        self.title.setFont(font)
+        self.title.setAlignment(QtCore.Qt.AlignmentFlag.AlignHCenter | QtCore.Qt.AlignmentFlag.AlignTop)
+        self.title.setFixedHeight(25)
+        layout.addWidget(self.title, QtCore.Qt.AlignmentFlag.AlignHCenter)
+
+        water_drop_groupbox = QtWidgets.QWidget()
         water_drop_groupbox.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.MinimumExpanding)
-        water_drop_layout = QtWidgets.QFormLayout()
+        water_drop_layout = QtWidgets.QGridLayout()
+        water_drop_layout.setVerticalSpacing(20)
+        water_drop_layout.setAlignment(QtCore.Qt.AlignmentFlag.AlignTop)
+        y = 0
         water_drop_groupbox.setLayout(water_drop_layout)
         water_drop_groupbox.setMinimumWidth(100)
 
-        self.trigger_button = QtWidgets.QPushButton("Trigger")
+        self.trigger_button = FilledPushButton("Trigger", self)
         self.trigger_button.clicked.connect(self.trigger_bdu)
-        water_drop_layout.addWidget(self.trigger_button)
+        self.trigger_button.setMinimumWidth(350)
+        water_drop_layout.addWidget(self.trigger_button, y, 0, 1, 2, QtCore.Qt.AlignmentFlag.AlignHCenter)
+        y += 1
 
-        self.full_trigger_button = QtWidgets.QPushButton("Full Trigger")
+        self.full_trigger_button = FilledPushButton("Full Trigger", self)
         self.full_trigger_button.clicked.connect(self.trigger_bdu_full)
-        water_drop_layout.addWidget(self.full_trigger_button)
+        self.full_trigger_button.setMinimumWidth(350)
+        water_drop_layout.addWidget(self.full_trigger_button, y, 0, 1, 2, QtCore.Qt.AlignmentFlag.AlignHCenter)
+        y += 1
 
-        self.auton_radio_group = QtWidgets.QButtonGroup()
+        self.auton_radio_group = QtWidgets.QButtonGroup(self)
 
-        self.atag_radio_button = QtWidgets.QRadioButton()
+        self.atag_radio_button = RadioButton(self)
         self.auton_radio_group.addButton(self.atag_radio_button, 1)
         self.atag_radio_button.setText('Blink')
         self.atag_radio_button.pressed.connect(
             lambda: self.set_auton_drop_mode(1)
         )
 
-        self.atag_drop_radio_button = QtWidgets.QRadioButton()
+        self.atag_drop_radio_button = RadioButton(self)
         self.auton_radio_group.addButton(self.atag_drop_radio_button, 2)
         self.atag_drop_radio_button.setText('Drop')
         self.atag_drop_radio_button.pressed.connect(
             lambda: self.set_auton_drop_mode(2)
         )
 
-        self.atag_cancel_button = QtWidgets.QPushButton('X')
+        self.atag_cancel_button = TonalToolButton(FluentIcon.CLOSE, self)
         self.atag_cancel_button.setEnabled(False)
         self.atag_cancel_button.clicked.connect(self.stop_auton_drop)
 
@@ -272,30 +353,37 @@ class WaterDropPane(QtWidgets.QWidget):
         radio_button_layout = QtWidgets.QGridLayout()
         radio_button_widget.setLayout(radio_button_layout)
 
-        radio_button_layout.addWidget(self.atag_radio_button, 0, 0)
-        radio_button_layout.addWidget(self.atag_drop_radio_button, 0, 1)
-        radio_button_layout.addWidget(self.atag_cancel_button, 0, 2)
+        radio_button_layout.addWidget(QtWidgets.QLabel('Autonomy: '), 0, 0)
+        radio_button_layout.addWidget(self.atag_radio_button, 0, 1)
+        radio_button_layout.addWidget(self.atag_drop_radio_button, 0, 2)
+        radio_button_layout.addWidget(self.atag_cancel_button, 0, 3)
 
-        water_drop_layout.addRow('Autonomy: ', radio_button_widget)
+        water_drop_layout.addWidget(radio_button_widget, y, 0, 1, 2, QtCore.Qt.AlignmentFlag.AlignHCenter)
+        y += 1
 
         self.tags_label = QtWidgets.QLabel(
             f"{COLORED_NONE_TEXT}"
         )
-        water_drop_layout.addRow("Visible Tags:", self.tags_label)
+        water_drop_layout.addWidget(QtWidgets.QLabel("Visible Tags:"), y, 0, QtCore.Qt.AlignmentFlag.AlignRight)
+        water_drop_layout.addWidget(self.tags_label, y, 1, QtCore.Qt.AlignmentFlag.AlignLeft)
+        y += 1
 
         self.full_drops_label = QtWidgets.QLabel(
-            f"{self.format_use_full_drops(False)}"
+            f"{self.format_use_full_drops(False)}",
+            self
         )
-        water_drop_layout.addRow("Using full drops:", self.full_drops_label)
+        water_drop_layout.addWidget(QtWidgets.QLabel("Using full drops:"), y, 0, QtCore.Qt.AlignmentFlag.AlignRight)
+        water_drop_layout.addWidget(self.full_drops_label, y, 1, QtCore.Qt.AlignmentFlag.AlignLeft)
+        y += 1
 
-        self.open_log_button = QtWidgets.QPushButton("Open log")
-        self.open_log_button.clicked.connect(self.start_log_file)
-        water_drop_layout.addWidget(self.open_log_button)
-
-        self.close_log_button = QtWidgets.QPushButton("Close log")
-        self.close_log_button.clicked.connect(self.close_log_file)
-        self.close_log_button.setEnabled(False)
-        water_drop_layout.addWidget(self.close_log_button)
+        logging_layout = QtWidgets.QGridLayout()
+        self.logging_switch = SwitchButton(self)
+        self.logging_switch.checkedChanged.connect(
+            lambda state: self.start_log_file() if state else self.close_log_file()
+        )
+        logging_layout.addWidget(QtWidgets.QLabel("Enable Logging:"), 0, 0, QtCore.Qt.AlignmentFlag.AlignRight)
+        logging_layout.addWidget(self.logging_switch, 0, 1, QtCore.Qt.AlignmentFlag.AlignLeft)
+        water_drop_layout.addLayout(logging_layout, y, 0, 1, 2, QtCore.Qt.AlignmentFlag.AlignHCenter)
 
         layout.addWidget(water_drop_groupbox)
 
@@ -326,14 +414,13 @@ class WaterDropPane(QtWidgets.QWidget):
     def toggle_use_full_drops(self) -> None:
         self.use_full_drops = not self.use_full_drops
         self.full_drops_label.setText(self.format_use_full_drops(self.use_full_drops))
-        self.auton_use_full_drop_client.call(
-            roslibpy.ServiceRequest({'data': self.use_full_drops}),
-            callback=lambda msg: print(f'Use full drops response: {msg}')
-        )
+        if self.auton_use_full_drop_client is not None:
+            self.auton_use_full_drop_client.call(
+                roslibpy.ServiceRequest({'data': self.use_full_drops}),
+                callback=lambda msg: print(f'Use full drops response: {msg}')
+            )
 
     def start_log_file(self) -> None:
-        self.open_log_button.setEnabled(False)
-        self.close_log_button.setEnabled(True)
         if self.log_file is None:
             self.log_file = open(f'log/{datetime.datetime.utcnow().isoformat()}.log', 'w')
             self.log_start_time = time.time() + 5
@@ -347,12 +434,12 @@ class WaterDropPane(QtWidgets.QWidget):
             self.log_file.flush()
 
     def close_log_file(self) -> None:
-        self.open_log_button.setEnabled(True)
-        self.close_log_button.setEnabled(False)
         if self.log_file is not None:
-            self.log_to_file(f'Closed file at {round(time.time())} (Ran for {round(time.time() - self.log_start_time)}s)')
+            self.log_to_file(
+                f'Closed file at {round(time.time())} (Ran for {round(time.time() - self.log_start_time)}s)'
+            )
             self.log_file.close()
-            Toast.get().show_message(f'Saved log to: {self.log_file.name}', 4)
+            Toast.get().show_message('Log', f'Saved log to: {self.log_file.name}', InfoBarIcon.SUCCESS, 4)
             self.log_file = None
             self.controller.mic_button.led_state = False
 
@@ -373,18 +460,18 @@ class WaterDropPane(QtWidgets.QWidget):
         if self.auton_drop_client is not None:
             if self.atag_cancel_button is not None:
                 self.atag_cancel_button.setEnabled(mode != 0)
-
             if mode != self.current_mode:
                 if mode != 0:
                     if self.current_mode != 0:
                         self.auton_drop_client.cancel()
                     self.controller.touchpad.led_color = (255, 150, 0) if mode == 2 else (0, 255, 0)
-                    print(self.controller.touchpad.led_color)
                     self.auton_drop_client.send_goal({'should_drop': mode == 2})
                 else:
                     self.auton_drop_client.cancel()
 
             self.current_mode = mode
+        else:
+            self.uncheck_radio_buttons()
 
     def auton_feedback_callback(self, msg: dict[str, Any]) -> None:
         apriltag_id = msg.get('_apriltag_id', None)
@@ -401,12 +488,15 @@ class WaterDropPane(QtWidgets.QWidget):
         self.log_to_file(f'Finished auton drop')
         self.stop_auton_drop()
 
-    def stop_auton_drop(self) -> None:
-        self.set_auton_drop_mode(0)
+    def uncheck_radio_buttons(self) -> None:
         self.auton_radio_group.setExclusive(False)
         self.atag_radio_button.setChecked(False)
         self.atag_drop_radio_button.setChecked(False)
         self.auton_radio_group.setExclusive(True)
+
+    def stop_auton_drop(self) -> None:
+        self.set_auton_drop_mode(0)
+        self.uncheck_radio_buttons()
         self.controller.touchpad.led_color = (255, 0, 0)
 
     def trigger_bdu_full(self) -> None:
@@ -478,12 +568,20 @@ class WaterDropPane(QtWidgets.QWidget):
             self.auton_drop_finished
         )
 
-    @staticmethod
-    def show_log_countdown() -> None:
+        self.auton_use_full_drop_client.call(
+            roslibpy.ServiceRequest({'data': self.use_full_drops}),
+            callback=lambda msg: print(f'Use full drops response: {msg}')
+        )
+
+    def show_log_countdown(self) -> None:
         for countdown in range(5, 0, -1):
-            Toast.get().send_message.emit(f'Log timer starting in {countdown} seconds...', 1.5)
+            Toast.get().send_message.emit(
+                'Log', f'Log timer starting in {countdown} seconds...', InfoBarIcon.INFORMATION, 0.9
+            )
             time.sleep(1)
-        Toast.get().send_message.emit(f'Log timer started', 2)
+            if self.log_file is None:
+                return
+        Toast.get().send_message.emit('Log', f'Log timer started', InfoBarIcon.INFORMATION, 2)
 
     @staticmethod
     def format_use_full_drops(use_full_drops: bool) -> str:
@@ -502,6 +600,76 @@ class WaterDropPane(QtWidgets.QWidget):
         text = text[:-1]
         return f"<a style='color:{GREEN_COLOR};'>{text}</a>"
 
+
+class LaserPane(OutlinedCardWidget):
+    def __init__(self, parent: QtWidgets.QWidget) -> None:
+        super().__init__(parent)
+        self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
+
+        layout = QtWidgets.QVBoxLayout()
+        self.setLayout(layout)
+        layout.setAlignment(QtCore.Qt.AlignmentFlag.AlignVCenter)
+
+        self.title = QtWidgets.QLabel('Laser')
+        font = self.font()
+        font.setPixelSize(15)
+        self.title.setFont(font)
+        self.title.setAlignment(QtCore.Qt.AlignmentFlag.AlignHCenter | QtCore.Qt.AlignmentFlag.AlignTop)
+        self.title.setFixedHeight(25)
+        layout.addWidget(self.title, QtCore.Qt.AlignmentFlag.AlignHCenter)
+
+        laser_groupbox = QtWidgets.QWidget()
+        laser_groupbox.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.MinimumExpanding)
+        laser_layout = QtWidgets.QGridLayout()
+        laser_layout.setVerticalSpacing(20)
+        laser_layout.setAlignment(QtCore.Qt.AlignmentFlag.AlignTop)
+        y = 0
+        laser_groupbox.setLayout(laser_layout)
+        laser_groupbox.setMinimumWidth(100)
+
+        self.fire_button = FilledPushButton("Fire", self)
+        self.fire_button.clicked.connect(self.fire)
+        self.fire_button.setMinimumWidth(350)
+        laser_layout.addWidget(self.fire_button, y, 0, 1, 2, QtCore.Qt.AlignmentFlag.AlignHCenter)
+        y += 1
+
+        loop_layout = QtWidgets.QGridLayout()
+        self.loop_switch = SwitchButton(self)
+        self.loop_switch.checkedChanged.connect(self.set_loop)
+        loop_layout.addWidget(QtWidgets.QLabel("Enable Loop:"), 0, 0, QtCore.Qt.AlignmentFlag.AlignRight)
+        loop_layout.addWidget(self.loop_switch, 0, 1, QtCore.Qt.AlignmentFlag.AlignLeft)
+        laser_layout.addLayout(loop_layout, y, 0, 1, 2, QtCore.Qt.AlignmentFlag.AlignHCenter)
+
+        layout.addWidget(laser_groupbox, QtCore.Qt.AlignmentFlag.AlignVCenter)
+
+        self.laser_fire_client: roslibpy.Service | None = None
+        self.laser_set_loop_client: roslibpy.Service | None = None
+
+    def setup_ros(self, client: roslibpy.Ros) -> None:
+        self.laser_fire_client = roslibpy.Service(
+            client,
+            '/laser/fire',
+            'std_srvs/srv/Trigger'
+        )
+        self.laser_set_loop_client = roslibpy.Service(
+            client,
+            '/laser/set_loop',
+            'std_srvs/srv/SetBool'
+        )
+
+    def fire(self) -> None:
+        if self.laser_fire_client is not None:
+            self.laser_fire_client.call(
+                roslibpy.ServiceRequest(),
+                lambda msg: logger.debug(f'Got response from laser fire: {msg}')
+            )
+
+    def set_loop(self, state: bool) -> None:
+        if self.laser_set_loop_client is not None:
+            self.laser_set_loop_client.call(
+                roslibpy.ServiceRequest({'data': state}),
+                lambda msg: logger.debug(f'Got response from laser set_loop: {msg}')
+            )
 
 class GimbalPane(QtWidgets.QWidget):
     def __init__(self, parent: QtWidgets.QWidget) -> None:
@@ -537,7 +705,7 @@ class GimbalPane(QtWidgets.QWidget):
         layout.addWidget(gimbal_groupbox)
 
 
-class TelemetryPane(QtWidgets.QWidget):
+class TelemetryPane(OutlinedCardWidget):
     formatted_battery_signal = QtCore.Signal(str, str)
     formatted_armed_signal = QtCore.Signal(str)
     formatted_mode_signal = QtCore.Signal(str)
@@ -549,11 +717,10 @@ class TelemetryPane(QtWidgets.QWidget):
         layout = QtWidgets.QVBoxLayout()
         self.setLayout(layout)
 
-        telemetry_groupbox = QtWidgets.QGroupBox("Telemetry")
+        telemetry_groupbox = QtWidgets.QWidget()
         telemetry_groupbox.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Policy.Minimum)
         telemetry_layout = QtWidgets.QGridLayout()
         telemetry_groupbox.setLayout(telemetry_layout)
-        # telemetry_groupbox.setMinimumWidth(100)
 
         # battery row
         battery_layout = QtWidgets.QHBoxLayout()

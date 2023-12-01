@@ -1,28 +1,27 @@
-import argparse
-import json
-import os.path
 import sys
 import time
 from threading import Thread
 
 from PySide6 import QtCore, QtGui, QtWidgets
+from PySide6.QtWidgets import QApplication
+from easing_functions import ExponentialEaseInOut
+from qmaterialwidgets import (MaterialWindow, SplashScreen as MaterialSplashScreen,
+                              Theme, setTheme, FluentIcon, MaterialTitleBar, MaterialIconBase, palette, NavigationRail,
+                              InfoBarIcon)
+
 from loguru import logger
 
 from avrgui.lib.controller.pythondualsense import Dualsense, TriggerMode, find_devices, BrightnessLevel
 from avrgui.lib.enums import ConnectionState
-from avrgui.lib.qt_icon import set_icon
 from avrgui.lib.toast import Toast
-from avrgui.lib.water_drop_popup import WaterDropPopup
 from avrgui.tabs.connection.main import MainConnectionWidget
 from avrgui.tabs.heads_up import HeadsUpDisplayWidget
-from avrgui.tabs.thermal_view_control import ThermalViewControlWidget
 from avrgui.tabs.vmc_telemetry import VMCTelemetryWidget
-from avrgui.tabs.water_drop import WaterDropWidget
 
 controller = Dualsense()
 was_connected = False
 
-tabs_unlocked = False
+QApplication.setHighDpiScaleFactorRoundingPolicy(QtCore.Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
 
 
 class TabBar(QtWidgets.QTabBar):
@@ -101,7 +100,7 @@ class TabWidget(QtWidgets.QTabWidget):
         self.setTabVisible(index, True)
 
 
-class MainWindow(QtWidgets.QWidget):
+class MainWindow(MaterialWindow):
     """
     This is the main application class.
     """
@@ -114,8 +113,8 @@ class MainWindow(QtWidgets.QWidget):
     controller_rb = QtCore.Signal()
     controller_lt = QtCore.Signal()
     controller_rt = QtCore.Signal(bool)
-    controller_dpad_left = QtCore.Signal()
-    controller_dpad_right = QtCore.Signal()
+    controller_dpad_up = QtCore.Signal()
+    controller_dpad_down = QtCore.Signal()
     controller_options = QtCore.Signal()
     controller_share = QtCore.Signal()
     controller_ps = QtCore.Signal()
@@ -133,7 +132,6 @@ class MainWindow(QtWidgets.QWidget):
         self.water_drop_popup = None
         self.menu_bar = None
         self.toast: Toast | None = None
-        self.tabs = None
         self.main_connection_widget: MainConnectionWidget | None = None
         self.pcc_tester_widget = None
         self.mqtt_debug_widget = None
@@ -145,25 +143,19 @@ class MainWindow(QtWidgets.QWidget):
         self.moving_map_widget = None
         self.heads_up_widget: HeadsUpDisplayWidget | None = None
 
-        set_icon(self)
-        self.setWindowTitle("AVR GUI")
+        self.setWindowIcon(QtGui.QIcon('assets/logo.png'))
+        self.setWindowTitle('Daedalus AVR GUI')
 
-        self.mqtt_connected = False
-        self.serial_connected = False
+        self.ros_connected = False
+
+        self.is_fullscreen = True
 
     def build(self) -> None:
         """
         Build the GUI layout
         """
         self.toast = Toast.get(self)
-        self.water_drop_popup = WaterDropPopup(self)
         self.menu_bar = QtWidgets.QMenuBar()
-
-        layout = QtWidgets.QVBoxLayout(self)
-        self.setLayout(layout)
-
-        self.tabs = TabWidget(self)
-        layout.addWidget(self.tabs)
 
         # add tabs
 
@@ -171,13 +163,10 @@ class MainWindow(QtWidgets.QWidget):
 
         self.main_connection_widget = MainConnectionWidget(self)
         self.main_connection_widget.build()
-        self.main_connection_widget.pop_in.connect(self.tabs.pop_in)
-        self.tabs.addTab(
-            self.main_connection_widget, self.main_connection_widget.windowTitle()
-        )
+        self.addSubInterface(self.main_connection_widget, FluentIcon.CONNECT, 'Connection')
 
         self.main_connection_widget.ros_client_connection_widget.connection_state.connect(
-            self.set_mqtt_connected_state
+            self.set_ros_connected_state
         )
 
         self.menu_bar.addMenu(self.main_connection_widget.ros_client_connection_widget.ros_client_menu)
@@ -202,28 +191,11 @@ class MainWindow(QtWidgets.QWidget):
 
         ros_client = self.main_connection_widget.ros_client_connection_widget.ros_client
 
-        def shift_left() -> None:
-            if tabs_unlocked:
-                index = (self.tabs.tab_bar.currentIndex() - 1) % self.tabs.tab_bar.count()
-                self.tabs.tab_bar.setCurrentIndex(index)
-
-        self.controller_dpad_left.connect(shift_left)
-
-        def shift_right() -> None:
-            if tabs_unlocked:
-                index = (self.tabs.tab_bar.currentIndex() + 1) % self.tabs.tab_bar.count()
-                self.tabs.tab_bar.setCurrentIndex(index)
-
-        self.controller_dpad_right.connect(shift_right)
-
         # vmc telemetry widget
 
         self.vmc_telemetry_widget = VMCTelemetryWidget(self, ros_client, controller)
         self.vmc_telemetry_widget.build()
-        self.vmc_telemetry_widget.pop_in.connect(self.tabs.pop_in)
-        self.tabs.addTab(
-            self.vmc_telemetry_widget, self.vmc_telemetry_widget.windowTitle()
-        )
+        self.addSubInterface(self.vmc_telemetry_widget, FluentIcon.DEVELOPER_TOOLS, 'Telemetry')
 
         # if controller is not None:
         #     def set_mic_led(state: bool):
@@ -239,40 +211,31 @@ class MainWindow(QtWidgets.QWidget):
 
         # thermal view widget
 
-        self.thermal_view_control_widget = ThermalViewControlWidget(self, ros_client)
-        self.thermal_view_control_widget.build()
-        self.thermal_view_control_widget.pop_in.connect(self.tabs.pop_in)
-        self.tabs.addTab(
-            self.thermal_view_control_widget,
-            self.thermal_view_control_widget.windowTitle(),
-        )
-
-        self.controller_r.connect(
-            self.thermal_view_control_widget.on_controller_r
-        )
-
-        self.controller_rt.connect(
-            self.thermal_view_control_widget.on_controller_rt
-        )
-
-        self.controller_rb.connect(
-            self.thermal_view_control_widget.on_controller_rb
-        )
-
-        self.controller_r_press.connect(
-            self.thermal_view_control_widget.on_controller_r3
-        )
+        # self.thermal_view_control_widget = ThermalViewControlWidget(self, ros_client)
+        # self.thermal_view_control_widget.build()
+        # self.addSubInterface(self.thermal_view_control_widget, FluentIcon.CAMERA, 'Thermal')
+        #
+        # self.controller_r.connect(
+        #     self.thermal_view_control_widget.on_controller_r
+        # )
+        #
+        # self.controller_rt.connect(
+        #     self.thermal_view_control_widget.on_controller_rt
+        # )
+        #
+        # self.controller_rb.connect(
+        #     self.thermal_view_control_widget.on_controller_rb
+        # )
+        #
+        # self.controller_r_press.connect(
+        #     self.thermal_view_control_widget.on_controller_r3
+        # )
 
         # camera view widget
 
         # self.camera_view_widget = CameraViewWidget(self)
         # self.camera_view_widget.client = self.main_connection_widget.socketio_connection_widget.socketio_client.client
         # self.camera_view_widget.build()
-        # self.camera_view_widget.pop_in.connect(self.tabs.pop_in)
-        # self.tabs.addTab(
-        #         self.camera_view_widget,
-        #         self.camera_view_widget.windowTitle(),
-        # )
         # 
         # self.main_connection_widget.socketio_connection_widget.connection_state.connect(
         #         self.camera_view_widget.mqtt_connection_state
@@ -282,13 +245,9 @@ class MainWindow(QtWidgets.QWidget):
 
         # water drop widget
 
-        self.water_drop_widget = WaterDropWidget(self, ros_client)
-        self.water_drop_widget.build()
-        self.water_drop_widget.pop_in.connect(self.tabs.pop_in)
-        self.tabs.addTab(
-            self.water_drop_widget,
-            self.water_drop_widget.windowTitle(),
-        )
+        # self.water_drop_widget = WaterDropWidget(self, ros_client)
+        # self.water_drop_widget.build()
+        # self.addSubInterface(self.water_drop_widget, FluentIcon.ARROW_DOWN, 'Water Drop')
         # self.controller_touchBtn.connect(
         #         lambda: self.main_connection_widget.ros_client_connection_widget.ros_client.client.publish(
         #                 "avr/autonomy/kill",
@@ -308,25 +267,17 @@ class MainWindow(QtWidgets.QWidget):
 
         # self.moving_map_widget = MovingMapWidget(self)
         # self.moving_map_widget.build()
-        # self.moving_map_widget.pop_in.connect(self.tabs.pop_in)
-        # self.tabs.addTab(self.moving_map_widget, self.moving_map_widget.windowTitle())
 
         # autonomy widget
 
         # self.autonomy_widget = AutonomyWidget(self)
         # self.autonomy_widget.build()
-        # self.autonomy_widget.pop_in.connect(self.tabs.pop_in)
-        # self.tabs.addTab(self.autonomy_widget, self.autonomy_widget.windowTitle())
 
         # heads up display widget
 
         self.heads_up_widget = HeadsUpDisplayWidget(self, ros_client, controller)
         self.heads_up_widget.build()
-        self.heads_up_widget.pop_in.connect(self.tabs.pop_in)
-        self.tabs.addTab(
-            self.heads_up_widget,
-            self.heads_up_widget.windowTitle(),
-        )
+        self.addSubInterface(self.heads_up_widget, FluentIcon.FULL_SCREEN, 'HUD')
         # self.heads_up_widget.zed_pane.toggle_connection.connect(
         #     lambda: self.camera_view_widget.change_streaming.emit(
         #         not self.camera_view_widget.is_connected
@@ -359,16 +310,23 @@ class MainWindow(QtWidgets.QWidget):
             self.heads_up_widget.water_pane.stop_auton_drop
         )
         self.controller_mic.connect(
-            lambda: self.heads_up_widget.water_pane.start_log_file()
-            if self.heads_up_widget.water_pane.log_file is None else
-            self.heads_up_widget.water_pane.close_log_file()
+            lambda: self.heads_up_widget.water_pane.logging_switch.setChecked(
+                not self.heads_up_widget.water_pane.logging_switch.isChecked()
+            )
+        )
+        self.controller_rb.connect(
+            self.heads_up_widget.laser_pane.fire
+        )
+        self.controller_rt.connect(
+            lambda state: self.heads_up_widget.laser_pane.loop_switch.setChecked(state)
+            if self.heads_up_widget.laser_pane.laser_set_loop_client is not None or not state else None
         )
         # self.camera_view_widget.update_frame.connect(
         #         self.heads_up_widget.zed_pane.update_frame.emit
         # )
-        self.thermal_view_control_widget.viewer.update_frame.connect(
-            self.heads_up_widget.thermal_pane.update_frame.emit
-        )
+        # self.thermal_view_control_widget.viewer.update_frame.connect(
+        #     self.heads_up_widget.thermal_pane.update_frame.emit
+        # )
         self.controller_lt.connect(
             self.heads_up_widget.water_pane.trigger_bdu_full
         )
@@ -381,8 +339,28 @@ class MainWindow(QtWidgets.QWidget):
         )
 
         # set initial state
-        self.set_mqtt_connected_state(ConnectionState.DISCONNECTED)
-        self.set_serial_connected_state(ConnectionState.DISCONNECTED)
+        self.set_ros_connected_state(ConnectionState.DISCONNECTED)
+
+        routes = ['main_connection', 'vmc_telemetry', 'heads_up_display']
+
+        def get_selected_route() -> int:
+            for route, item in self.navigationInterface.items.items():
+                if item.isSelected:
+                    return routes.index(route)
+
+        def shift_up() -> None:
+            index = (get_selected_route() - 1) % len(routes)
+            self.stackedWidget.setCurrentIndex(index)
+            self.navigationInterface.setCurrentItem(routes[index])
+
+        self.controller_dpad_up.connect(shift_up)
+
+        def shift_down() -> None:
+            index = (get_selected_route() + 1) % len(routes)
+            self.stackedWidget.setCurrentIndex(index)
+            self.navigationInterface.setCurrentItem(routes[index])
+
+        self.controller_dpad_down.connect(shift_down)
 
         controller.right_trigger.trigger_mode = TriggerMode.NO_RESISTANCE
         controller.right_trigger.trigger_section = (75, 120)
@@ -395,71 +373,58 @@ class MainWindow(QtWidgets.QWidget):
         controller.player_led.brightness = BrightnessLevel.HIGH
         controller.player_led.player_num = 0
 
-    def set_mqtt_connected_state(self, connection_state: ConnectionState) -> None:
-        global tabs_unlocked
-        self.mqtt_connected = connection_state == ConnectionState.CONNECTED
-
-        # list of widgets that are mqtt connected
-        widgets = [
-            # self.mqtt_debug_widget,
-            # self.mqtt_logger_widget,
-            self.vmc_telemetry_widget,
-            self.vmc_control_widget,
-            self.thermal_view_control_widget,
-            # self.camera_view_widget,
-            self.water_drop_widget,
-            # self.moving_map_widget,
-            # self.autonomy_widget,
-            self.heads_up_widget,
-        ]
-
-        tabs_unlocked = self.mqtt_connected
-        # disable/enable widgets
-        for widget in widgets:
-            idx = self.tabs.indexOf(widget)
-            self.tabs.setTabEnabled(idx, self.mqtt_connected)
-            if not self.mqtt_connected:
-                self.tabs.setTabToolTip(idx, "SocketIO not connected")
-            else:
-                self.tabs.setTabToolTip(idx, "")
+    def set_ros_connected_state(self, connection_state: ConnectionState) -> None:
+        self.ros_connected = connection_state == ConnectionState.CONNECTED
 
         # clear widgets to a starting state
-        if not self.mqtt_connected:
+        if not self.ros_connected:
             self.vmc_telemetry_widget.clear()
-            self.thermal_view_control_widget.clear()
+            # self.thermal_view_control_widget.clear()
             # self.camera_view_widget.clear()
-            self.water_drop_widget.clear()
+            # self.water_drop_widget.clear()
             # self.moving_map_widget.clear()
             self.heads_up_widget.clear()
 
-    def set_serial_connected_state(self, connection_state: ConnectionState) -> None:
-        self.serial_connected = connection_state == ConnectionState.CONNECTED
-
-        # deal with pcc tester
-        idx = self.tabs.indexOf(self.pcc_tester_widget)
-        self.tabs.tab_bar.setTabVisible(idx, self.serial_connected)
-        self.tabs.setTabEnabled(idx, self.serial_connected)
-        if not self.serial_connected:
-
-            # self.pcc_tester_widget.reset_all()
-            self.tabs.setTabToolTip(idx, "Serial not connected")
-        else:
-            self.tabs.setTabToolTip(idx, "")
-
     def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
-        self.toast.window_resize_event(event)
+        title_bar: MaterialTitleBar = w.titleBar
+        title_bar.setFixedWidth(event.size().width())
 
     def closeEvent(self, event: QtGui.QCloseEvent) -> None:
         """
         Override close event to close all connections.
         """
-        if self.mqtt_connected:
+        if self.ros_connected:
             self.main_connection_widget.ros_client_connection_widget.ros_client.logout()
         self.heads_up_widget.water_pane.close_log_file()
 
+        controller.close()
+
         event.accept()
 
-        controller.close()
+    def toggle_fullscreen(self) -> None:
+        self.is_fullscreen = not self.is_fullscreen
+        if self.is_fullscreen:
+            self.showFullScreen()
+        else:
+            self.showNormal()
+        self.titleBar.maxBtn.setMaxState(self.is_fullscreen)
+
+
+class SplashScreen(MaterialSplashScreen):
+    def __init__(self, icon: str | QtGui.QIcon | MaterialIconBase, parent=None, enable_shadow=True) -> None:
+        super().__init__(icon, parent, enable_shadow)
+        self.opacity = 1
+        self.shadowEffect.deleteLater()
+
+    def paintEvent(self, e) -> None:
+        painter = QtGui.QPainter(self)
+        painter.setPen(QtCore.Qt.PenStyle.NoPen)
+
+        # draw background
+        c = 32
+        painter.setBrush(QtGui.QColor(c, c, c, round(self.opacity * 255)))
+        painter.drawRect(self.rect())
+        painter.end()
 
 
 w: MainWindow | None = None
@@ -468,18 +433,34 @@ w: MainWindow | None = None
 def main() -> None:
     global w
     # create Qt Application instance
+    setTheme(Theme.AUTO)
     app = QtWidgets.QApplication()
-    pixmap = QtGui.QPixmap("assets/splash.png")
-    splash = QtWidgets.QSplashScreen(pixmap)
-    splash.show()
-    app.processEvents()
+    app.setAttribute(QtCore.Qt.ApplicationAttribute.AA_DontCreateNativeWidgetSiblings)
 
     app.setWindowIcon(QtGui.QIcon("assets/icon.png"))
-    app.setApplicationName("Team Daedalus AVR Gui")
-    app.setApplicationDisplayName("Team Daedalus AVR Gui")
+    app.setApplicationName("Daedalus AVR GUI")
+    app.setApplicationDisplayName("Daedalus AVR GUI")
 
     # create the main window
     w = MainWindow()
+    w.setMinimumSize(QtCore.QSize(900, 600))
+    splash_screen = SplashScreen(QtGui.QIcon('assets/splash.png'), w)
+    splash_screen.setIconSize(QtCore.QSize(220, 220))
+    splash_screen.raise_()
+
+    title_bar: MaterialTitleBar = w.titleBar
+    palette.setThemeColor(QtGui.QColor(156, 67, 53))
+    title_bar.setFixedWidth(w.size().width())
+    title_bar.maxBtn.setMaxState(True)
+    title_bar.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+    # noinspection PyUnresolvedReferences,PyProtectedMember
+    title_bar.maxBtn.clicked.disconnect(title_bar._TitleBarBase__toggleMaxState)
+    title_bar.maxBtn.clicked.connect(w.toggle_fullscreen)
+    title_bar.maxBtn.setVisible(False)
+    title_bar.minBtn.setVisible(False)
+    w.showFullScreen()
+
+    app.processEvents()
 
     if controller is not None:
         controller.circle.on_state.register(w.controller_circle.emit)
@@ -490,8 +471,8 @@ def main() -> None:
         controller.right_bumper.on_press.register(w.controller_rb.emit)
         controller.left_trigger.on_press.register(w.controller_lt.emit)
         controller.right_trigger.on_state.register(w.controller_rt.emit)
-        controller.dpad.left.on_press.register(w.controller_dpad_left.emit)
-        controller.dpad.right.on_press.register(w.controller_dpad_right.emit)
+        controller.dpad.up.on_press.register(w.controller_dpad_up.emit)
+        controller.dpad.down.on_press.register(w.controller_dpad_down.emit)
         controller.ps.on_press.register(w.controller_ps.emit)
         controller.left_stick.on_move.register(w.controller_l.emit)
         controller.right_stick.on_move.register(w.controller_r.emit)
@@ -505,64 +486,49 @@ def main() -> None:
 
     w.build()
 
-    # if controller is not None:
-    #     def set_player_led(state: ConnectionState) -> None:
-    #         if state == ConnectionState.connected:
-    #             controller.player_led.player_num = 3
-    #         elif state == ConnectionState.connecting:
-    #             controller.player_led.raw = 10
-    #         elif state == ConnectionState.disconnecting:
-    #             controller.player_led.raw = 31
-    #         else:
-    #             controller.player_led.player_num = 0
-    #
-    #     w.main_connection_widget.ros_client_connection_widget.connection_state.connect(set_player_led)
+    count = 20
+    duration = 0.5
 
-    d = QtWidgets.QMenu(w)
-    # socketio_action = QtGui.QAction("SocketIO Disconnected")
-    # socketio_action.triggered.connect(w.main_connection_widget.ros_client_connection_widget.ros_client.logout)
-    # socketio_action.setEnabled(False)
-    # w.main_connection_widget.ros_client_connection_widget.connection_state.connect(
-    #     lambda state: socketio_action.setEnabled(state == ConnectionState.connected)
-    # )
-    # w.main_connection_widget.ros_client_connection_widget.connection_state.connect(
-    #     lambda state: socketio_action.setText(
-    #         "Disconnect SocketIO" if state == ConnectionState.connected else "SocketIO Disconnected"
-    #     )
-    # )
-    # d.addAction(socketio_action)
+    opacity_effect = QtWidgets.QGraphicsOpacityEffect(w)
+    opacity_effect.setOpacity(1)
+    splash_screen.iconWidget.setGraphicsEffect(opacity_effect)
+    ease = ExponentialEaseInOut(start=1, end=0, duration=count)
+    index = 0
+    wait_time = round(duration // (count + 1)) * 1000
+    timer = QtCore.QTimer(splash_screen)
+    timer.setTimerType(QtCore.Qt.TimerType.PreciseTimer)
 
-    # kill_action = QtGui.QAction("Kill Motors")
-    # kill_action.triggered.connect(
-    #         lambda: w.main_connection_widget.socketio_connection_widget.socketio_client.client.publish(
-    #                 "avr/kill", "", qos=2
-    #         )
-    # )
-    # kill_action.setEnabled(False)
-    # w.main_connection_widget.socketio_connection_widget.connection_state.connect(
-    #         lambda state: kill_action.setEnabled(
-    #                 True if state == ConnectionState.connected else False
-    #         )
-    # )
-    # d.addAction(kill_action)
+    def splash_reveal_callback() -> None:
+        nonlocal index
 
-    # controller_action = QtGui.QAction("Connect Controller")
-    # w.main_connection_widget.controller_connect_button.clicked.connect(
-    #     lambda: controller.open()
-    # )
-    # w.main_connection_widget.controller_connect_button.clicked.connect(
-    #     lambda: controller.force_update()
-    # )
-    # d.addAction(controller_action)
+        opacity = ease(index)
+        opacity_effect.setOpacity(opacity)
+        splash_screen.opacity = opacity
 
-    # w.main_connection_widget.socketio_connection_widget.connection_state.connect(
-    #         lambda state: w.main_connection_widget.socketio_connection_widget.socketio_client.client.publish(
-    #                 "avr/status/request_update", "", qos=2
-    #         ) if state == ConnectionState.connected else None
-    # )
+        if index == count + 1:
+            timer.stop()
+            timer.deleteLater()
+            splash_screen.finish()
 
-    w.show()
-    splash.finish(w)
+        splash_screen.update()
+
+        index += 1
+
+    timer.timeout.connect(splash_reveal_callback)
+    timer.start(wait_time)
+
+    def connection_state_callback(connection_state: ConnectionState) -> None:
+        navigation_interface: NavigationRail = w.navigationInterface
+        state = connection_state == ConnectionState.CONNECTED
+
+        for name, item in navigation_interface.items.items():
+            if not name == 'main_connection':
+                item.setEnabled(state)
+
+    connection_state_callback(ConnectionState.DISCONNECTED)
+    w.main_connection_widget.ros_client_connection_widget.connection_state.connect(
+        connection_state_callback
+    )
 
     def set_controller_outputs() -> None:
         global was_connected
@@ -597,15 +563,18 @@ def main() -> None:
     def connection_callback(connection_state: ConnectionState) -> None:
         set_controller_outputs()
         if connection_state == ConnectionState.CONNECTED:
+            Toast.get().show_message('Rosbridge', 'Connected successfully', InfoBarIcon.SUCCESS, 2)
             Thread(target=alert_buzz, daemon=True).start()
         elif connection_state == ConnectionState.FAILURE:
-            Toast.get().show_message('Failed to connect to rosbridge', 1)
+            Toast.get().show_message('Rosbridge', 'Failed to connect to rosbridge', InfoBarIcon.ERROR, 4)
 
     w.main_connection_widget.ros_client_connection_widget.connection_state.connect(connection_callback)
 
     def reconnect_controller() -> None:
         while True:
             set_controller_outputs()
+            if w.main_connection_widget.controller_connect_button is not None:
+                w.main_connection_widget.controller_connect_button.setEnabled(not controller.is_open)
             if not controller.is_open:
                 if len(find_devices()) > 0:
                     controller.open()
@@ -624,20 +593,15 @@ def main() -> None:
 
     Thread(target=reconnect_controller, daemon=True).start()
 
+    w.main_connection_widget.ros_client_connection_widget.ros_client.connection_state.emit(ConnectionState.CONNECTED)
+
+    w.show()
+    splash_screen.show()
+    app.processEvents()
+
     # run
     sys.exit(app.exec())
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--test-bundle",
-        action="store_true",
-        help="Immediately exit the application with exit code 0, to test bundling",
-    )
-    args = parser.parse_args()
-
-    if args.test_bundle:
-        sys.exit(0)
-
     main()

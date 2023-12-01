@@ -5,14 +5,14 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from loguru import logger
 
 from .connection.rosbridge import RosBridgeClient
-from ..lib.qt_icon import set_icon
 
 
 class BaseTabWidget(QtWidgets.QWidget):
     pop_in: QtCore.SignalInstance = QtCore.Signal(object)
 
-    def __init__(self, parent: QtWidgets.QWidget, ros_client: RosBridgeClient | None) -> None:
+    def __init__(self, parent: QtWidgets.QWidget, ros_client: RosBridgeClient | None, object_name: str = '') -> None:
         super().__init__(parent)
+        self.setObjectName(object_name)
 
         self.client: roslibpy.Ros | None = None
 
@@ -21,7 +21,6 @@ class BaseTabWidget(QtWidgets.QWidget):
             logger.debug(f"Set up signal for {self.__class__.__name__}")
         else:
             logger.warning(f"Didn\'t set up signal for {self.__class__.__name__}")
-        set_icon(self)
 
     def setup_ros(self, client: roslibpy.Ros) -> None:
         self.client = client
