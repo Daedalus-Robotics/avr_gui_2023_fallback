@@ -2,7 +2,7 @@ roslibpy~=1.6.0
 loguru~=0.6.0
 colour~=0.1.5
 numpy~=1.23.4
-scipy==1.9.3
+scipy==1.10.0
 PySide6==6.4.0.1
 opencv-python~=4.6.0.66
 bell-avr-libraries[mqtt,serial]==0.1.12
